@@ -112,6 +112,99 @@ The project follows a clean **Layered Architecture** adhering to Separation of C
                                   └─────────────────────────────┘
 ```
 
+### 🔄 End-to-End Request-Response Lifecycle ("Add Transaction")
+
+When a user submits an expense, the request flows through every layer of the architecture:
+
+```
+User clicks "Add Transaction"
+        ↓
+JavaScript reads form
+        ↓
+fetch() sends POST + JSON
+        ↓
+Java HttpServer receives request
+        ↓
+Handler parses JSON
+        ↓
+Service validates/business logic
+        ↓
+DAO
+        ↓
+PreparedStatement
+        ↓
+JDBC
+        ↓
+MySQL
+        ↓
+JSON response
+        ↓
+JavaScript updates UI
+```
+
+#### Detailed Sequence Flow:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as User (Browser)
+    participant JS as Vanilla JS (app.js)
+    participant HTTP as Java HttpServer (ExpensesHandler)
+    participant JSON as SimpleJson Engine
+    participant SVC as ExpenseService & ValidationUtil
+    participant DAO as ExpenseDAOImpl (JDBC)
+    participant DB as MySQL Database
+
+    User->>JS: Clicks "Save Expense"
+    JS->>JS: Reads form inputs & builds payload
+    JS->>HTTP: fetch("POST /api/expenses", body: JSON)
+    HTTP->>JSON: SimpleJson.parseExpense(requestBody)
+    JSON-->>HTTP: returns strongly-typed Expense model
+    HTTP->>SVC: createExpense(expense)
+    SVC->>SVC: ValidationUtil.validateExpense(expense)
+    SVC->>SVC: checkBudgetAlert(expense)
+    SVC->>DAO: activeDao.add(expense)
+    DAO->>DAO: Connection conn.setAutoCommit(false)
+    DAO->>DAO: PreparedStatement.setInt / setDouble / setString
+    DAO->>DB: executeUpdate()
+    DB-->>DAO: Generated Key (auto-increment ID)
+    DAO->>DAO: conn.commit()
+    DAO-->>SVC: Expense populated with generated ID
+    SVC-->>HTTP: Created Expense entity + budget metadata
+    HTTP->>JSON: SimpleJson.toJson(responseMap)
+    HTTP-->>JS: HTTP 201 Created (JSON Response)
+    JS->>JS: showToast() + closeExpenseModal()
+    JS->>JS: refreshAllData() (Re-renders table, Canvas chart, KPIs)
+    JS-->>User: UI reflects new transaction immediately
+```
+
+#### Step-by-Step Code Execution Breakdown:
+
+1. **User clicks "Save Expense"**:
+   - The user fills out the form fields in [`web/index.html`](file:///Users/utsavkumar/Documents/studentmngnmtnsysytem/ExpenseTracker/web/index.html) and clicks "Save Expense".
+2. **JavaScript reads form**:
+   - `handleExpenseSubmit()` in [`web/app.js`](file:///Users/utsavkumar/Documents/studentmngnmtnsysytem/ExpenseTracker/web/app.js) intercepts the `submit` event, reads values (`title`, `amount`, `category`, `paymentMethod`, `date`, `notes`), and constructs a JavaScript payload object.
+3. **`fetch()` sends POST + JSON**:
+   - `fetch('/api/expenses', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })` transmits the HTTP request asynchronously.
+4. **Java HttpServer receives request**:
+   - Java SE `com.sun.net.httpserver.HttpServer` in [`ExpenseHttpServer.java`](file:///Users/utsavkumar/Documents/studentmngnmtnsysytem/ExpenseTracker/src/com/expensetracker/web/ExpenseHttpServer.java) routes the call to `ExpensesHandler.handleCreateExpense()`.
+5. **Handler parses JSON**:
+   - [`SimpleJson.parseExpense()`](file:///Users/utsavkumar/Documents/studentmngnmtnsysytem/ExpenseTracker/src/com/expensetracker/util/SimpleJson.java) tokenizes the raw JSON input stream and deserializes it into an [`Expense`](file:///Users/utsavkumar/Documents/studentmngnmtnsysytem/ExpenseTracker/src/com/expensetracker/model/Expense.java) domain entity.
+6. **Service validates & executes business logic**:
+   - [`ExpenseService.createExpense()`](file:///Users/utsavkumar/Documents/studentmngnmtnsysytem/ExpenseTracker/src/com/expensetracker/service/ExpenseService.java) executes [`ValidationUtil.validateExpense()`](file:///Users/utsavkumar/Documents/studentmngnmtnsysytem/ExpenseTracker/src/com/expensetracker/util/ValidationUtil.java) (verifying title non-emptiness, positive amount $> 0$, date validity) and checks if the transaction breaches category budget thresholds.
+7. **DAO Abstraction**:
+   - The service invokes `activeDao.add(expense)`. The [`ExpenseDAO`](file:///Users/utsavkumar/Documents/studentmngnmtnsysytem/ExpenseTracker/src/com/expensetracker/dao/ExpenseDAO.java) interface decouples the service from the underlying database engine.
+8. **PreparedStatement**:
+   - [`ExpenseDAOImpl`](file:///Users/utsavkumar/Documents/studentmngnmtnsysytem/ExpenseTracker/src/com/expensetracker/dao/ExpenseDAOImpl.java) prepares the parameterized SQL query: `INSERT INTO expenses (title, amount, category, payment_method, expense_date, notes) VALUES (?, ?, ?, ?, ?, ?)`, setting each parameter to prevent SQL Injection.
+9. **JDBC Transaction Management**:
+   - JDBC opens a transaction via `conn.setAutoCommit(false)`, executes the insert, retrieves the auto-generated primary key via `ps.getGeneratedKeys()`, and commits via `conn.commit()`. If an exception occurs, `conn.rollback()` is invoked.
+10. **MySQL Persistence**:
+    - The MySQL storage engine inserts the row, enforces schema constraints (`CHECK amount > 0`), updates index trees (`idx_category`, `idx_date`), and returns the assigned ID.
+11. **JSON Response**:
+    - The server serializes the result into JSON with `SimpleJson.toJson()` and sends an `HTTP 201 Created` status code with CORS headers.
+12. **JavaScript Updates UI**:
+    - `handleExpenseSubmit()` receives the response, closes the modal, triggers a success toast alert (and warning toast if budget was exceeded), and executes `refreshAllData()` to update summary KPI metric cards, re-render the HTML5 Canvas donut chart, and update the transaction table.
+
 ---
 
 ## 📂 Project Directory Structure
