@@ -7,20 +7,23 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 
 /**
- * Manages JDBC connections to MySQL database.
- * Demonstrates JDBC driver loading, connection lifecycle, and exception wrapping.
+ * Manages database connection lifecycle using standard JDBC DriverManager.
+ * Note: This project intentionally demonstrates fundamental JDBC without third-party
+ * connection pooling libraries (such as HikariCP or Apache DBCP) to showcase core Java mechanics.
  */
 public final class DatabaseConnection {
 
     private static boolean driverLoaded = false;
 
     static {
+        loadDriver();
+    }
+
+    private static void loadDriver() {
         try {
             Class.forName(DatabaseConfig.getDriver());
             driverLoaded = true;
         } catch (ClassNotFoundException e) {
-            // Driver may not be present on classpath; application will fallback gracefully to In-Memory mode.
-            System.err.println("[DatabaseConnection] Notice: MySQL JDBC Driver (" + DatabaseConfig.getDriver() + ") is not found on classpath.");
             driverLoaded = false;
         }
     }
@@ -29,6 +32,9 @@ public final class DatabaseConnection {
     }
 
     public static boolean isDriverAvailable() {
+        if (!driverLoaded) {
+            loadDriver();
+        }
         return driverLoaded;
     }
 
@@ -39,8 +45,11 @@ public final class DatabaseConnection {
      * @throws DatabaseOperationException if connection cannot be established
      */
     public static Connection getConnection() throws DatabaseOperationException {
-        if (!driverLoaded) {
-            throw new DatabaseOperationException("MySQL JDBC Driver is not loaded on the classpath.");
+        if (!isDriverAvailable()) {
+            throw new DatabaseOperationException(
+                    "MySQL JDBC Driver (" + DatabaseConfig.getDriver() + ") is not found on the classpath. " +
+                    "Please ensure mysql-connector-j-*.jar is placed in the lib/ directory."
+            );
         }
         try {
             return DriverManager.getConnection(
@@ -50,8 +59,9 @@ public final class DatabaseConnection {
             );
         } catch (SQLException e) {
             throw new DatabaseOperationException(
-                    "Unable to connect to MySQL database at " + DatabaseConfig.getUrl() + ". " +
-                    "Reason: " + e.getMessage(), e
+                    "Unable to connect to database at " + DatabaseConfig.getUrl() + ". " +
+                    "Please check that MySQL is running and database credentials are configured in db.properties. " +
+                    "Error: " + e.getMessage(), e
             );
         }
     }
@@ -62,7 +72,7 @@ public final class DatabaseConnection {
      * @return true if connection succeeds, false otherwise
      */
     public static boolean testConnection() {
-        if (!driverLoaded) {
+        if (!isDriverAvailable()) {
             return false;
         }
         try (Connection conn = getConnection()) {

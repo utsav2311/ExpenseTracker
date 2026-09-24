@@ -1,29 +1,28 @@
 package com.expensetracker;
 
-import com.expensetracker.dsa.ExpenseSorter;
-import com.expensetracker.exception.ExpenseNotFoundException;
-import com.expensetracker.exception.InvalidExpenseException;
+import com.expensetracker.exception.ExpenseTrackerException;
 import com.expensetracker.model.Budget;
 import com.expensetracker.model.Category;
-import com.expensetracker.model.Expense;
-import com.expensetracker.model.ExpenseSummary;
-import com.expensetracker.model.PaymentMethod;
-import com.expensetracker.service.ExpenseService;
+import com.expensetracker.model.CategorySummary;
+import com.expensetracker.model.DashboardSummary;
+import com.expensetracker.model.MonthlySummary;
+import com.expensetracker.model.Transaction;
+import com.expensetracker.model.TransactionType;
+import com.expensetracker.service.TransactionService;
 import com.expensetracker.test.ExpenseTrackerTest;
 import com.expensetracker.util.DateTimeUtil;
 import com.expensetracker.web.ExpenseHttpServer;
 
 import java.time.LocalDate;
 import java.util.List;
-import java.util.Map;
 import java.util.Scanner;
 
 /**
- * Main application entry point.
+ * Main application entry point for Personal Income & Expense Tracker.
  * Supports:
- *  1. Web Server Mode (Default): Launches built-in HTTP server with REST API & Web UI
- *  2. Interactive Console CLI Mode: Menu-driven terminal application
- *  3. Automated Test Suite Mode: Executes tests and reports validation assertions
+ *  1. Web Server Mode (Default)
+ *  2. Interactive Console CLI Mode
+ *  3. Automated Test Suite Mode
  */
 public class Main {
 
@@ -35,10 +34,10 @@ public class Main {
             return;
         }
 
-        ExpenseService expenseService = new ExpenseService();
+        TransactionService transactionService = new TransactionService();
 
         if ("console".equals(mode) || "cli".equals(mode)) {
-            runConsoleApp(expenseService);
+            runConsoleApp(transactionService);
         } else {
             int port = 8080;
             if (args.length > 1) {
@@ -54,11 +53,10 @@ public class Main {
             }
 
             try {
-                ExpenseHttpServer server = new ExpenseHttpServer(port, expenseService);
+                ExpenseHttpServer server = new ExpenseHttpServer(port, transactionService);
                 server.start();
             } catch (Exception e) {
                 System.err.println("Failed to start HTTP server: " + e.getMessage());
-                e.printStackTrace();
             }
         }
     }
@@ -67,11 +65,11 @@ public class Main {
     //  INTERACTIVE CONSOLE INTERFACE
     // =========================================================================
 
-    private static void runConsoleApp(ExpenseService service) {
+    private static void runConsoleApp(TransactionService service) {
         Scanner scanner = new Scanner(System.in);
         System.out.println("==========================================================");
-        System.out.println("      Welcome to Personal Expense Tracker (Core Java)     ");
-        System.out.println("      Persistence: " + service.getStorageType());
+        System.out.println("   Personal Income & Expense Tracker (Core Java + JDBC)   ");
+        System.out.println("   Storage: " + service.getStorageType());
         System.out.println("==========================================================");
 
         boolean running = true;
@@ -82,35 +80,35 @@ public class Main {
 
             switch (input) {
                 case "1":
-                    viewAllExpenses(service);
+                    viewDashboard(service);
                     break;
                 case "2":
-                    addNewExpense(service, scanner);
+                    viewAllTransactions(service);
                     break;
                 case "3":
-                    editExpense(service, scanner);
+                    addNewTransaction(service, scanner);
                     break;
                 case "4":
-                    deleteExpense(service, scanner);
+                    editTransaction(service, scanner);
                     break;
                 case "5":
-                    searchAndFilterExpenses(service, scanner);
+                    deleteTransaction(service, scanner);
                     break;
                 case "6":
-                    viewAnalyticsSummary(service);
+                    searchAndFilterTransactions(service, scanner);
                     break;
                 case "7":
-                    viewBudgets(service);
+                    viewMonthlyReport(service);
                     break;
                 case "8":
-                    setBudget(service, scanner);
+                    setMonthlyBudget(service, scanner);
                     break;
                 case "9":
-                    System.out.println("\nThank you for using Personal Expense Tracker. Goodbye!");
+                    System.out.println("\nThank you for using Personal Income & Expense Tracker. Goodbye!");
                     running = false;
                     break;
                 default:
-                    System.out.println("[!] Invalid option. Please enter a number between 1 and 9.");
+                    System.out.println("[!] Invalid option. Please select 1 to 9.");
             }
             if (running) {
                 System.out.println("\nPress Enter to return to main menu...");
@@ -120,281 +118,241 @@ public class Main {
     }
 
     private static void printMenu() {
-        System.out.println("\n--------------- MAIN MENU ---------------");
-        System.out.println(" 1. View All Expenses");
-        System.out.println(" 2. Add New Expense");
-        System.out.println(" 3. Edit Existing Expense");
-        System.out.println(" 4. Delete Expense");
-        System.out.println(" 5. Search, Filter & Sort (DSA Demo)");
-        System.out.println(" 6. View Financial Analytics & Summary");
-        System.out.println(" 7. View Monthly Budgets & Spending");
-        System.out.println(" 8. Set / Update Category Budget");
+        System.out.println("\n----------------------- MAIN MENU -----------------------");
+        System.out.println(" 1. View Financial Dashboard");
+        System.out.println(" 2. View All Transactions");
+        System.out.println(" 3. Add New Transaction (Income / Expense)");
+        System.out.println(" 4. Edit Existing Transaction");
+        System.out.println(" 5. Delete Transaction");
+        System.out.println(" 6. Search, Filter & Sort Transactions");
+        System.out.println(" 7. Monthly Summary & Category Reports");
+        System.out.println(" 8. Set Monthly Budget");
         System.out.println(" 9. Exit");
-        System.out.println("-----------------------------------------");
+        System.out.println("---------------------------------------------------------");
     }
 
-    private static void viewAllExpenses(ExpenseService service) {
+    private static void viewDashboard(TransactionService service) {
         try {
-            List<Expense> expenses = service.getAllExpenses();
-            printExpenseTable(expenses);
+            LocalDate now = LocalDate.now();
+            DashboardSummary ds = service.getDashboardSummary(now.getMonthValue(), now.getYear());
+            System.out.println("\n================ FINANCIAL DASHBOARD ================");
+            System.out.printf(" Current Balance:   ₹%,.2f\n", ds.getBalance());
+            System.out.printf(" Total Income:      ₹%,.2f\n", ds.getTotalIncome());
+            System.out.printf(" Total Expenses:    ₹%,.2f\n", ds.getTotalExpense());
+            System.out.printf(" Monthly Budget:    ₹%,.2f (Used: %.1f%% | Remaining: ₹%,.2f)\n",
+                    ds.getMonthlyBudget(), ds.getBudgetPercentage(), ds.getBudgetRemaining());
+            System.out.printf(" Total Transactions: %d\n", ds.getTransactionCount());
+            System.out.println("-----------------------------------------------------");
+
+            System.out.println("\n--- Recent Transactions ---");
+            printTransactionTable(ds.getRecentTransactions());
         } catch (Exception e) {
             System.out.println("[Error] " + e.getMessage());
         }
     }
 
-    private static void addNewExpense(ExpenseService service, Scanner scanner) {
-        System.out.println("\n--- Add New Expense ---");
+    private static void viewAllTransactions(TransactionService service) {
         try {
-            System.out.print("Enter Title (e.g. Grocery shopping): ");
-            String title = scanner.nextLine();
+            List<Transaction> transactions = service.getAllTransactions();
+            printTransactionTable(transactions);
+        } catch (Exception e) {
+            System.out.println("[Error] " + e.getMessage());
+        }
+    }
 
-            System.out.print("Enter Amount ($): ");
+    private static void addNewTransaction(TransactionService service, Scanner scanner) {
+        System.out.println("\n--- Add New Transaction ---");
+        try {
+            System.out.print("Transaction Type (1=Income, 2=Expense) [2]: ");
+            String typeChoice = scanner.nextLine().trim();
+            TransactionType type = "1".equals(typeChoice) ? TransactionType.INCOME : TransactionType.EXPENSE;
+
+            System.out.print("Enter Description (e.g. Monthly Tech Salary / Grocery run): ");
+            String description = scanner.nextLine().trim();
+
+            System.out.print("Enter Amount (₹): ");
             double amount = Double.parseDouble(scanner.nextLine().trim());
 
-            System.out.println("Available Categories: ");
-            Category[] categories = Category.values();
-            for (int i = 0; i < categories.length; i++) {
-                System.out.printf("  %d. %s %s\n", i + 1, categories[i].getIcon(), categories[i].getDisplayName());
+            // Load categories matching selected type
+            List<Category> categories = service.getCategoriesByType(type);
+            System.out.printf("Select %s Category:\n", type.getDisplayName());
+            for (int i = 0; i < categories.size(); i++) {
+                Category c = categories.get(i);
+                System.out.printf("  %d. %s %s\n", i + 1, c.getIcon(), c.getCategoryName());
             }
-            System.out.print("Select Category (1-" + categories.length + "): ");
+            System.out.print("Choice (1-" + categories.size() + "): ");
             int catIdx = Integer.parseInt(scanner.nextLine().trim()) - 1;
-            Category category = (catIdx >= 0 && catIdx < categories.length) ? categories[catIdx] : Category.OTHER;
+            int categoryId = (catIdx >= 0 && catIdx < categories.size()) ? categories.get(catIdx).getCategoryId() : categories.get(0).getCategoryId();
 
-            System.out.println("Payment Methods: ");
-            PaymentMethod[] methods = PaymentMethod.values();
-            for (int i = 0; i < methods.length; i++) {
-                System.out.printf("  %d. %s %s\n", i + 1, methods[i].getIcon(), methods[i].getDisplayName());
-            }
-            System.out.print("Select Payment Method (1-" + methods.length + "): ");
-            int pmIdx = Integer.parseInt(scanner.nextLine().trim()) - 1;
-            PaymentMethod pm = (pmIdx >= 0 && pmIdx < methods.length) ? methods[pmIdx] : PaymentMethod.CASH;
+            System.out.print("Payment Method (Cash / UPI / Credit Card / Debit Card / Net Banking) [Cash]: ");
+            String pm = scanner.nextLine().trim();
+            if (pm.isEmpty()) pm = "Cash";
 
-            System.out.print("Enter Date (YYYY-MM-DD) or press Enter for Today: ");
+            System.out.print("Date (YYYY-MM-DD) or press Enter for Today: ");
             String dateStr = scanner.nextLine().trim();
             LocalDate date = dateStr.isEmpty() ? LocalDate.now() : DateTimeUtil.parseDate(dateStr);
 
-            System.out.print("Enter Notes (optional): ");
-            String notes = scanner.nextLine();
+            System.out.print("Notes (optional): ");
+            String notes = scanner.nextLine().trim();
 
-            Expense expense = new Expense(title, amount, category, pm, date, notes);
-            Expense created = service.createExpense(expense);
-            System.out.printf("[✓] Expense created successfully! Assigned ID: #%d\n", created.getId());
-
-            Budget alert = service.checkBudgetAlert(created);
-            if (alert != null) {
-                System.out.printf("    [!] BUDGET WARNING: Monthly budget for %s has been exceeded by $%.2f!\n",
-                        alert.getCategory().getDisplayName(), alert.getSpent() - alert.getMonthlyLimit());
-            }
+            Transaction tx = new Transaction(1, categoryId, amount, type, description, notes, pm, date);
+            Transaction created = service.addTransaction(tx);
+            System.out.printf("[✓] Transaction #%d added successfully!\n", created.getTransactionId());
+        } catch (ExpenseTrackerException e) {
+            System.out.println("[Validation Error] " + e.getMessage());
         } catch (NumberFormatException e) {
             System.out.println("[Error] Invalid numeric input.");
-        } catch (InvalidExpenseException e) {
-            System.out.println("[Validation Error] " + e.getMessage());
         } catch (Exception e) {
             System.out.println("[Error] " + e.getMessage());
         }
     }
 
-    private static void editExpense(ExpenseService service, Scanner scanner) {
-        System.out.println("\n--- Edit Expense ---");
+    private static void editTransaction(TransactionService service, Scanner scanner) {
+        System.out.println("\n--- Edit Transaction ---");
         try {
-            System.out.print("Enter Expense ID to edit: ");
+            System.out.print("Enter Transaction ID to edit: ");
             int id = Integer.parseInt(scanner.nextLine().trim());
-            Expense existing = service.getExpenseById(id);
+            Transaction tx = service.getTransactionById(id);
 
-            System.out.printf("Current Title [%s]: ", existing.getTitle());
-            String title = scanner.nextLine().trim();
-            if (!title.isEmpty()) existing.setTitle(title);
+            System.out.printf("Description [%s]: ", tx.getDescription());
+            String desc = scanner.nextLine().trim();
+            if (!desc.isEmpty()) tx.setDescription(desc);
 
-            System.out.printf("Current Amount [$%.2f]: ", existing.getAmount());
+            System.out.printf("Amount [₹%.2f]: ", tx.getAmount());
             String amtStr = scanner.nextLine().trim();
-            if (!amtStr.isEmpty()) existing.setAmount(Double.parseDouble(amtStr));
+            if (!amtStr.isEmpty()) tx.setAmount(Double.parseDouble(amtStr));
 
-            System.out.print("Update Category? (y/N): ");
-            if (scanner.nextLine().trim().equalsIgnoreCase("y")) {
-                Category[] categories = Category.values();
-                for (int i = 0; i < categories.length; i++) {
-                    System.out.printf("  %d. %s %s\n", i + 1, categories[i].getIcon(), categories[i].getDisplayName());
-                }
-                System.out.print("Select Category: ");
-                int catIdx = Integer.parseInt(scanner.nextLine().trim()) - 1;
-                if (catIdx >= 0 && catIdx < categories.length) existing.setCategory(categories[catIdx]);
-            }
+            System.out.printf("Payment Method [%s]: ", tx.getPaymentMethod());
+            String pm = scanner.nextLine().trim();
+            if (!pm.isEmpty()) tx.setPaymentMethod(pm);
 
-            System.out.printf("Current Date [%s]: ", existing.getDate());
+            System.out.printf("Date [%s]: ", tx.getTransactionDate());
             String dateStr = scanner.nextLine().trim();
-            if (!dateStr.isEmpty()) existing.setDate(DateTimeUtil.parseDate(dateStr));
+            if (!dateStr.isEmpty()) tx.setTransactionDate(DateTimeUtil.parseDate(dateStr));
 
-            System.out.printf("Current Notes [%s]: ", existing.getNotes());
+            System.out.printf("Notes [%s]: ", tx.getNotes());
             String notes = scanner.nextLine().trim();
-            if (!notes.isEmpty()) existing.setNotes(notes);
+            if (!notes.isEmpty()) tx.setNotes(notes);
 
-            service.updateExpense(id, existing);
-            System.out.println("[✓] Expense updated successfully!");
-        } catch (ExpenseNotFoundException e) {
-            System.out.println("[!] " + e.getMessage());
+            service.updateTransaction(id, tx);
+            System.out.println("[✓] Transaction updated successfully!");
         } catch (Exception e) {
             System.out.println("[Error] " + e.getMessage());
         }
     }
 
-    private static void deleteExpense(ExpenseService service, Scanner scanner) {
-        System.out.println("\n--- Delete Expense ---");
+    private static void deleteTransaction(TransactionService service, Scanner scanner) {
+        System.out.println("\n--- Delete Transaction ---");
         try {
-            System.out.print("Enter Expense ID to delete: ");
+            System.out.print("Enter Transaction ID to delete: ");
             int id = Integer.parseInt(scanner.nextLine().trim());
-            System.out.printf("Are you sure you want to delete Expense #%d? (y/N): ", id);
-            String confirm = scanner.nextLine().trim();
-            if (confirm.equalsIgnoreCase("y")) {
-                service.deleteExpense(id);
-                System.out.println("[✓] Expense deleted successfully!");
+            Transaction tx = service.getTransactionById(id);
+            System.out.printf("Are you sure you want to delete '%s' (₹%.2f)? (y/N): ", tx.getDescription(), tx.getAmount());
+            if (scanner.nextLine().trim().equalsIgnoreCase("y")) {
+                service.deleteTransaction(id);
+                System.out.println("[✓] Transaction deleted successfully!");
             } else {
                 System.out.println("Operation cancelled.");
             }
-        } catch (ExpenseNotFoundException e) {
-            System.out.println("[!] " + e.getMessage());
         } catch (Exception e) {
             System.out.println("[Error] " + e.getMessage());
         }
     }
 
-    private static void searchAndFilterExpenses(ExpenseService service, Scanner scanner) {
-        System.out.println("\n--- Search, Filter & Sort (DSA Demo) ---");
+    private static void searchAndFilterTransactions(TransactionService service, Scanner scanner) {
+        System.out.println("\n--- Search & Filter Transactions ---");
         try {
-            System.out.print("Enter search keyword (or press Enter to skip): ");
-            String q = scanner.nextLine().trim();
+            System.out.print("Filter by Type (1=All, 2=Income, 3=Expense) [1]: ");
+            String tChoice = scanner.nextLine().trim();
+            TransactionType type = null;
+            if ("2".equals(tChoice)) type = TransactionType.INCOME;
+            if ("3".equals(tChoice)) type = TransactionType.EXPENSE;
 
-            System.out.print("Sort By (date / amount / title / category) [default: date]: ");
-            String sortBy = scanner.nextLine().trim();
-            if (sortBy.isEmpty()) sortBy = "date";
+            System.out.print("Search Keyword (Description, Category, Notes) or Enter to skip: ");
+            String query = scanner.nextLine().trim();
 
-            System.out.print("Sort Order (desc / asc) [default: desc]: ");
-            String order = scanner.nextLine().trim();
-            if (order.isEmpty()) order = "desc";
+            System.out.print("Sort By (newest / oldest / highest / lowest) [newest]: ");
+            String sort = scanner.nextLine().trim();
 
-            System.out.print("Sorting Algorithm to Demonstrate (1=TimSort, 2=MergeSort, 3=QuickSort) [1]: ");
-            String algoChoice = scanner.nextLine().trim();
-            ExpenseSorter.Algorithm algo = ExpenseSorter.Algorithm.TIM_SORT;
-            if ("2".equals(algoChoice)) algo = ExpenseSorter.Algorithm.MERGE_SORT;
-            if ("3".equals(algoChoice)) algo = ExpenseSorter.Algorithm.QUICK_SORT;
-
-            long startNs = System.nanoTime();
-            List<Expense> results = service.getFilteredAndSortedExpenses(
-                    q, null, null, null, null, null, null, sortBy, order, algo
-            );
-            long elapsedNs = System.nanoTime() - startNs;
-
-            System.out.printf("\n[DSA Performance] Algorithm: %s | Matches: %d | Time: %.3f ms\n",
-                    algo.name(), results.size(), elapsedNs / 1_000_000.0);
-            printExpenseTable(results);
+            List<Transaction> results = service.getFilteredTransactions(type, null, null, null, query, sort);
+            printTransactionTable(results);
         } catch (Exception e) {
             System.out.println("[Error] " + e.getMessage());
         }
     }
 
-    private static void viewAnalyticsSummary(ExpenseService service) {
+    private static void viewMonthlyReport(TransactionService service) {
         try {
-            ExpenseSummary s = service.getSummary();
-            System.out.println("\n================ FINANCIAL SUMMARY ================");
-            System.out.printf(" Total Expenses:      $%.2f across %d transactions\n", s.getTotalExpenses(), s.getTotalCount());
-            System.out.printf(" Average Expense:     $%.2f\n", s.getAverageExpense());
-            if (s.getHighestExpense() != null) {
-                System.out.printf(" Highest Expense:     $%.2f (%s)\n", s.getHighestExpense().getAmount(), s.getHighestExpense().getTitle());
+            LocalDate now = LocalDate.now();
+            MonthlySummary ms = service.getMonthlySummary(now.getMonthValue(), now.getYear());
+            System.out.printf("\n================ MONTHLY SUMMARY (%s) ================\n", ms.getMonthName());
+            System.out.printf(" Income:           ₹%,.2f\n", ms.getIncome());
+            System.out.printf(" Expenses:         ₹%,.2f\n", ms.getExpenses());
+            System.out.printf(" Savings:          ₹%,.2f\n", ms.getSavings());
+            System.out.printf(" Transactions:     %d\n", ms.getTransactionCount());
+            if (ms.getHighestExpense() != null) {
+                System.out.printf(" Highest Expense:  ₹%,.2f (%s)\n",
+                        ms.getHighestExpense().getAmount(), ms.getHighestExpense().getDescription());
             }
-            if (s.getTopCategory() != null) {
-                System.out.printf(" Top Category:        %s %s ($%.2f)\n",
-                        s.getTopCategory().getIcon(), s.getTopCategory().getDisplayName(), s.getTopCategoryAmount());
+            if (ms.getHighestSpendingCategory() != null) {
+                System.out.printf(" Top Category:     %s (₹%,.2f)\n",
+                        ms.getHighestSpendingCategory(), ms.getHighestSpendingCategoryAmount());
             }
+            System.out.printf(" Monthly Budget:   ₹%,.2f (Remaining: ₹%,.2f | Used: %.1f%%)\n",
+                    ms.getBudgetAmount(), ms.getRemainingBudget(), ms.getBudgetPercentageUsed());
 
-            System.out.println("\n--- Category Breakdown ---");
-            for (Map.Entry<Category, Double> entry : s.getCategoryBreakdown().entrySet()) {
-                double pct = s.getCategoryPercentages().getOrDefault(entry.getKey(), 0.0);
-                System.out.printf("  %-25s : $%8.2f (%5.1f%%)\n",
-                        entry.getKey().getDisplayName(), entry.getValue(), pct);
+            System.out.println("\n--- Category Expense Breakdown (SQL Aggregations) ---");
+            List<CategorySummary> cats = service.getCategoryExpenseReport(now.getMonthValue(), now.getYear());
+            for (CategorySummary cs : cats) {
+                System.out.printf("  %-20s : ₹%,8.2f (%5.1f%% across %d tx)\n",
+                        cs.getCategoryName(), cs.getTotalAmount(), cs.getPercentage(), cs.getTransactionCount());
             }
-
-            System.out.println("\n--- Payment Methods ---");
-            for (Map.Entry<PaymentMethod, Double> entry : s.getPaymentMethodBreakdown().entrySet()) {
-                System.out.printf("  %-25s : $%8.2f\n", entry.getKey().getDisplayName(), entry.getValue());
-            }
-            System.out.println("===================================================");
+            System.out.println("==========================================================");
         } catch (Exception e) {
             System.out.println("[Error] " + e.getMessage());
         }
     }
 
-    private static void viewBudgets(ExpenseService service) {
+    private static void setMonthlyBudget(TransactionService service, Scanner scanner) {
+        System.out.println("\n--- Set Monthly Budget ---");
         try {
-            String month = DateTimeUtil.getCurrentMonthYear();
-            List<Budget> budgets = service.getBudgetsWithSpending(month);
-            System.out.printf("\n============== MONTHLY BUDGETS (%s) ==============\n", month);
-            if (budgets.isEmpty()) {
-                System.out.println("No budgets configured yet. Use option 8 to set a budget.");
-                return;
-            }
-            System.out.printf("%-4s | %-24s | %-12s | %-12s | %-10s | %-10s\n",
-                    "ID", "Category", "Limit", "Spent", "Remaining", "Status");
-            System.out.println("-------------------------------------------------------------------------------");
-            for (Budget b : budgets) {
-                String status = b.isExceeded() ? "EXCEEDED!" : String.format("%.1f%%", b.getPercentageUsed());
-                System.out.printf("#%-3d | %s %-20s | $%10.2f | $%10.2f | $%8.2f | %s\n",
-                        b.getId(), b.getCategory().getIcon(), b.getCategory().getDisplayName(),
-                        b.getMonthlyLimit(), b.getSpent(), b.getRemaining(), status);
-            }
-            System.out.println("-------------------------------------------------------------------------------");
+            LocalDate now = LocalDate.now();
+            System.out.print("Enter Monthly Budget Amount (₹): ");
+            double amount = Double.parseDouble(scanner.nextLine().trim());
+
+            Budget b = new Budget(1, now.getMonthValue(), now.getYear(), amount);
+            service.saveBudget(b);
+            System.out.printf("[✓] Monthly budget for %s set to ₹%,.2f\n", now.getMonth(), amount);
         } catch (Exception e) {
             System.out.println("[Error] " + e.getMessage());
         }
     }
 
-    private static void setBudget(ExpenseService service, Scanner scanner) {
-        System.out.println("\n--- Set / Update Category Budget ---");
-        try {
-            Category[] categories = Category.values();
-            for (int i = 0; i < categories.length; i++) {
-                System.out.printf("  %d. %s %s\n", i + 1, categories[i].getIcon(), categories[i].getDisplayName());
-            }
-            System.out.print("Select Category: ");
-            int catIdx = Integer.parseInt(scanner.nextLine().trim()) - 1;
-            if (catIdx < 0 || catIdx >= categories.length) {
-                System.out.println("[!] Invalid category selection.");
-                return;
-            }
-
-            System.out.print("Enter Monthly Budget Limit ($): ");
-            double limit = Double.parseDouble(scanner.nextLine().trim());
-
-            Budget budget = new Budget(categories[catIdx], limit, DateTimeUtil.getCurrentMonthYear());
-            service.saveBudget(budget);
-            System.out.printf("[✓] Budget set for %s: $%.2f/month\n", categories[catIdx].getDisplayName(), limit);
-        } catch (Exception e) {
-            System.out.println("[Error] " + e.getMessage());
-        }
-    }
-
-    private static void printExpenseTable(List<Expense> expenses) {
-        if (expenses == null || expenses.isEmpty()) {
-            System.out.println("\n(No expense records found)");
+    private static void printTransactionTable(List<Transaction> transactions) {
+        if (transactions == null || transactions.isEmpty()) {
+            System.out.println("(No transactions found)");
             return;
         }
 
-        System.out.printf("\n%-4s | %-12s | %-24s | %-10s | %-18s | %-16s | %s\n",
-                "ID", "Date", "Title", "Amount", "Category", "Payment Method", "Notes");
-        System.out.println("---------------------------------------------------------------------------------------------------------------------");
+        System.out.printf("%-4s | %-12s | %-24s | %-7s | %-16s | %-14s | %s\n",
+                "ID", "Date", "Description", "Type", "Category", "Payment Method", "Amount (₹)");
+        System.out.println("---------------------------------------------------------------------------------------------------------");
 
-        for (Expense e : expenses) {
-            String title = (e.getTitle().length() > 23) ? e.getTitle().substring(0, 20) + "..." : e.getTitle();
-            String notes = (e.getNotes() != null && e.getNotes().length() > 25) ? e.getNotes().substring(0, 22) + "..." : (e.getNotes() != null ? e.getNotes() : "");
-            System.out.printf("#%-3d | %-12s | %-24s | $%8.2f | %s %-15s | %-16s | %s\n",
-                    e.getId(),
-                    DateTimeUtil.formatDate(e.getDate()),
-                    title,
-                    e.getAmount(),
-                    e.getCategory().getIcon(),
-                    e.getCategory().getDisplayName(),
-                    e.getPaymentMethod().getDisplayName(),
-                    notes);
+        for (Transaction t : transactions) {
+            String desc = (t.getDescription().length() > 23) ? t.getDescription().substring(0, 20) + "..." : t.getDescription();
+            String typeBadge = t.isIncome() ? "INCOME" : "EXPENSE";
+            String sign = t.isIncome() ? "+" : "-";
+            System.out.printf("#%-3d | %-12s | %-24s | %-7s | %-16s | %-14s | %s ₹%,.2f\n",
+                    t.getTransactionId(),
+                    t.getTransactionDate(),
+                    desc,
+                    typeBadge,
+                    t.getCategoryName() != null ? t.getCategoryName() : ("Cat#" + t.getCategoryId()),
+                    t.getPaymentMethod(),
+                    sign,
+                    t.getAmount());
         }
-        System.out.println("---------------------------------------------------------------------------------------------------------------------");
-        System.out.printf("Total Records: %d\n", expenses.size());
+        System.out.println("---------------------------------------------------------------------------------------------------------");
+        System.out.printf("Total Records: %d\n", transactions.size());
     }
 }

@@ -1,7 +1,7 @@
 /* ==============================================================================
- * ExpenseTracker - Custom CSS Design System
+ * Personal Income & Expense Tracker - Custom CSS Design System
  * Pure Vanilla CSS (No Bootstrap, No Tailwind)
- * Responsive, Modern, Accessible Layout
+ * Professional Financial Dashboard Aesthetic
  * ============================================================================== */
 
 :root {
@@ -10,14 +10,17 @@
     --primary-light: #eef2ff;
     --primary-glow: rgba(79, 70, 229, 0.15);
 
-    --success: #10b981;
-    --success-light: #ecfdf5;
+    --income: #10b981;
+    --income-light: #ecfdf5;
+    --income-border: #a7f3d0;
+
+    --expense: #ef4444;
+    --expense-light: #fef2f2;
+    --expense-border: #fecaca;
+
     --warning: #f59e0b;
     --warning-light: #fffbeb;
-    --danger: #ef4444;
-    --danger-light: #fef2f2;
-    --info: #0284c7;
-    --info-light: #f0f9ff;
+    --warning-border: #fde68a;
 
     --bg-main: #f8fafc;
     --bg-card: #ffffff;
@@ -168,20 +171,10 @@ body {
     border-color: var(--border-hover);
 }
 
-.btn-outline {
-    background-color: transparent;
-    color: var(--primary);
-    border-color: var(--primary);
-}
-
-.btn-outline:hover {
-    background-color: var(--primary-light);
-}
-
 .btn-danger {
-    background-color: var(--danger);
+    background-color: var(--expense);
     color: var(--text-inverse);
-    border-color: var(--danger);
+    border-color: var(--expense);
 }
 
 .btn-danger:hover {
@@ -216,22 +209,59 @@ body {
     border: 1px solid var(--border);
 }
 
+.badge-secondary {
+    background-color: var(--bg-card-secondary);
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+}
+
 .status-dot {
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background-color: var(--success);
-    box-shadow: 0 0 6px var(--success);
+    background-color: var(--income);
+    box-shadow: 0 0 6px var(--income);
+}
+
+.status-dot-offline {
+    background-color: var(--expense);
+    box-shadow: 0 0 6px var(--expense);
+}
+
+.badge-type {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: 0.2rem 0.55rem;
+    border-radius: var(--radius-sm);
+    display: inline-flex;
+    align-items: center;
+}
+
+.badge-income {
+    background-color: var(--income-light);
+    color: #047857;
+    border: 1px solid var(--income-border);
+}
+
+.badge-expense {
+    background-color: var(--expense-light);
+    color: #b91c1c;
+    border: 1px solid var(--expense-border);
 }
 
 .badge-cat {
     font-size: 0.78rem;
-    font-weight: 600;
-    padding: 0.25rem 0.6rem;
+    font-weight: 500;
+    padding: 0.25rem 0.55rem;
     border-radius: var(--radius-sm);
     display: inline-flex;
     align-items: center;
-    gap: 0.3rem;
+    gap: 0.35rem;
+    background-color: var(--bg-main);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
 }
 
 .badge-pm {
@@ -242,19 +272,15 @@ body {
     background-color: #f1f5f9;
     color: #334155;
     border: 1px solid #e2e8f0;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
 }
 
-.dsa-badge {
-    background-color: var(--primary-light);
-    color: var(--primary);
-    font-size: 0.75rem;
-    font-weight: 700;
-    padding: 0.25rem 0.6rem;
-    border-radius: var(--radius-full);
-    border: 1px solid rgba(79, 70, 229, 0.2);
+/* Currency text colors */
+.text-income {
+    color: #059669 !important;
+}
+
+.text-expense {
+    color: #dc2626 !important;
 }
 
 /* ==============================================================================
@@ -268,6 +294,24 @@ body {
     display: flex;
     flex-direction: column;
     gap: 1.5rem;
+}
+
+/* Error Banner */
+.error-banner {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-left: 4px solid var(--expense);
+}
+
+.error-banner-content {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.error-icon {
+    font-size: 1.5rem;
 }
 
 /* Cards */
@@ -295,7 +339,7 @@ body {
 }
 
 /* ==============================================================================
- * Metric KPI Cards Grid
+ * Primary Dashboard Cards (4 Cards)
  * ============================================================================== */
 
 .metrics-grid {
@@ -319,6 +363,22 @@ body {
 .metric-card:hover {
     transform: translateY(-2px);
     box-shadow: var(--shadow-md);
+}
+
+.metric-card-balance {
+    border-top: 3px solid var(--primary);
+}
+
+.metric-card-income {
+    border-top: 3px solid var(--income);
+}
+
+.metric-card-expense {
+    border-top: 3px solid var(--expense);
+}
+
+.metric-card-budget {
+    border-top: 3px solid var(--warning);
 }
 
 .metric-header {
@@ -346,6 +406,7 @@ body {
     color: var(--text-primary);
     letter-spacing: -0.02em;
     margin-bottom: 0.25rem;
+    font-variant-numeric: tabular-nums;
 }
 
 .metric-footer {
@@ -354,32 +415,121 @@ body {
 }
 
 /* ==============================================================================
- * Insights Row (Charts & Budgets)
+ * Monthly Financial Summary & Budget
  * ============================================================================== */
 
-.insights-row {
+.summary-panel {
+    background-color: var(--bg-card);
+}
+
+.summary-month-selector {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.summary-month-selector input {
+    width: auto;
+    padding: 0.35rem 0.65rem;
+    font-size: 0.8125rem;
+}
+
+.monthly-stats-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1.5rem;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 1rem;
+    padding: 1rem;
+    background-color: var(--bg-main);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
+    margin-bottom: 1.25rem;
 }
 
-@media (max-width: 900px) {
-    .insights-row {
-        grid-template-columns: 1fr;
-    }
-}
-
-.insight-card {
+.monthly-stat-item {
     display: flex;
     flex-direction: column;
+    gap: 0.25rem;
+}
+
+.stat-label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.stat-value {
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+}
+
+/* Budget Tracker Box */
+.budget-tracker-box {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    padding: 0.85rem 1rem;
+    background-color: var(--bg-main);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
+}
+
+.budget-tracker-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.budget-progress-track {
+    height: 8px;
+    background-color: #e2e8f0;
+    border-radius: var(--radius-full);
+    overflow: hidden;
+}
+
+.budget-progress-bar {
+    height: 100%;
+    border-radius: var(--radius-full);
+    transition: width 0.4s ease-in-out;
+}
+
+.progress-normal {
+    background-color: var(--income);
+}
+
+.progress-warning {
+    background-color: var(--warning);
+}
+
+.progress-exceeded {
+    background-color: var(--expense);
+}
+
+/* ==============================================================================
+ * Insights Grid 3 (Donut, Top Expenses, Recent Activity)
+ * ============================================================================== */
+
+.insights-grid-3 {
+    display: grid;
+    grid-template-columns: 1.1fr 1fr 1fr;
+    gap: 1.25rem;
+}
+
+@media (max-width: 1024px) {
+    .insights-grid-3 {
+        grid-template-columns: 1fr;
+    }
 }
 
 .chart-wrapper {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 1.5rem;
-    min-height: 240px;
+    gap: 1rem;
+    min-height: 200px;
     flex-wrap: wrap;
 }
 
@@ -387,7 +537,7 @@ body {
     display: flex;
     flex-direction: column;
     gap: 0.4rem;
-    max-height: 220px;
+    max-height: 190px;
     overflow-y: auto;
     font-size: 0.8125rem;
 }
@@ -395,12 +545,12 @@ body {
 .legend-item {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.45rem;
 }
 
 .legend-color-dot {
-    width: 10px;
-    height: 10px;
+    width: 9px;
+    height: 9px;
     border-radius: 50%;
     flex-shrink: 0;
 }
@@ -415,101 +565,54 @@ body {
     color: var(--text-primary);
 }
 
-/* Budget List Container */
-.budgets-container {
+/* Ranked and Recent Lists */
+.ranked-list, .recent-list {
     display: flex;
     flex-direction: column;
-    gap: 0.9rem;
-    max-height: 240px;
+    gap: 0.6rem;
+    max-height: 220px;
     overflow-y: auto;
-    padding-right: 0.25rem;
 }
 
-.budget-item {
+.list-item-row {
     display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
-    padding: 0.5rem 0.75rem;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.45rem 0.65rem;
     background-color: var(--bg-main);
     border-radius: var(--radius-md);
     border: 1px solid var(--border);
-}
-
-.budget-item-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
     font-size: 0.85rem;
 }
 
-.budget-cat-name {
-    font-weight: 600;
+.item-left {
     display: flex;
     align-items: center;
-    gap: 0.35rem;
-}
-
-.budget-amounts {
-    font-size: 0.8rem;
-    color: var(--text-muted);
-}
-
-.budget-amounts strong {
-    color: var(--text-primary);
-}
-
-.budget-progress-bar {
-    height: 7px;
-    background-color: #e2e8f0;
-    border-radius: var(--radius-full);
-    overflow: hidden;
-    position: relative;
-}
-
-.budget-progress-fill {
-    height: 100%;
-    border-radius: var(--radius-full);
-    transition: width 0.4s ease-in-out;
-}
-
-.progress-green {
-    background-color: var(--success);
-}
-
-.progress-orange {
-    background-color: var(--warning);
-}
-
-.progress-red {
-    background-color: var(--danger);
-}
-
-/* ==============================================================================
- * Filter & Search Toolbar (DSA)
- * ============================================================================== */
-
-.filter-card {
-    padding: 1.25rem;
-}
-
-.filter-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 1rem;
-    flex-wrap: wrap;
     gap: 0.5rem;
 }
 
-.filter-title-group {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
+.item-title {
+    font-weight: 600;
+    color: var(--text-primary);
 }
+
+.item-sub {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.item-amount {
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+/* ==============================================================================
+ * Filters & Controls
+ * ============================================================================== */
 
 .filter-controls-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
     gap: 0.85rem;
     align-items: flex-end;
 }
@@ -534,10 +637,6 @@ body {
     font-size: 0.78rem;
     font-weight: 600;
     color: var(--text-secondary);
-}
-
-.highlight-group label {
-    color: var(--primary);
 }
 
 .input-with-icon {
@@ -576,8 +675,48 @@ input:focus, select:focus, textarea:focus {
     box-shadow: 0 0 0 3px var(--primary-glow);
 }
 
+/* Transaction Type Selector Tabs in Modal */
+.type-selector-tabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+}
+
+.type-tab-label {
+    cursor: pointer;
+}
+
+.type-tab-label input[type="radio"] {
+    display: none;
+}
+
+.type-tab {
+    display: block;
+    text-align: center;
+    padding: 0.55rem;
+    font-weight: 700;
+    font-size: 0.875rem;
+    border-radius: var(--radius-md);
+    border: 2px solid var(--border);
+    background-color: var(--bg-card);
+    color: var(--text-secondary);
+    transition: all 0.15s;
+}
+
+.type-tab-label input[type="radio"]:checked + .type-tab-expense {
+    background-color: var(--expense-light);
+    color: #b91c1c;
+    border-color: var(--expense);
+}
+
+.type-tab-label input[type="radio"]:checked + .type-tab-income {
+    background-color: var(--income-light);
+    color: #047857;
+    border-color: var(--income);
+}
+
 /* ==============================================================================
- * Expenses Table
+ * Table Design
  * ============================================================================== */
 
 .table-responsive {
@@ -619,8 +758,8 @@ input:focus, select:focus, textarea:focus {
 
 .table-amount {
     font-weight: 700;
-    color: var(--text-primary);
     font-variant-numeric: tabular-nums;
+    font-size: 0.95rem;
 }
 
 .table-title {
@@ -632,7 +771,7 @@ input:focus, select:focus, textarea:focus {
     font-size: 0.75rem;
     color: var(--text-muted);
     margin-top: 0.15rem;
-    max-width: 280px;
+    max-width: 260px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -660,17 +799,7 @@ input:focus, select:focus, textarea:focus {
 }
 
 .action-btn-delete:hover {
-    background-color: var(--danger-light);
-}
-
-.benchmark-tag {
-    font-size: 0.75rem;
-    font-family: var(--font-mono);
-    color: var(--text-muted);
-    background-color: var(--bg-main);
-    padding: 0.2rem 0.5rem;
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--border);
+    background-color: var(--expense-light);
 }
 
 /* Empty State */
@@ -684,14 +813,8 @@ input:focus, select:focus, textarea:focus {
     margin-bottom: 0.75rem;
 }
 
-.empty-state h4 {
-    font-size: 1.15rem;
-    font-weight: 700;
-    margin-bottom: 0.25rem;
-}
-
 /* ==============================================================================
- * Modals & Dialogs
+ * Modals
  * ============================================================================== */
 
 .modal-backdrop {
@@ -707,7 +830,6 @@ input:focus, select:focus, textarea:focus {
     justify-content: center;
     z-index: 50;
     padding: 1rem;
-    transition: opacity 0.2s ease-in-out;
 }
 
 .modal-dialog {
@@ -726,14 +848,8 @@ input:focus, select:focus, textarea:focus {
 }
 
 @keyframes modalSlideIn {
-    from {
-        opacity: 0;
-        transform: translateY(12px) scale(0.98);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0) scale(1);
-    }
+    from { opacity: 0; transform: translateY(12px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 .modal-header {
@@ -753,7 +869,6 @@ input:focus, select:focus, textarea:focus {
     background: transparent;
     border: none;
     font-size: 1.4rem;
-    line-height: 1;
     color: var(--text-muted);
     cursor: pointer;
 }
@@ -776,7 +891,16 @@ input:focus, select:focus, textarea:focus {
 }
 
 .required {
-    color: var(--danger);
+    color: var(--expense);
+}
+
+.delete-item-preview {
+    margin-top: 0.75rem;
+    padding: 0.75rem;
+    background-color: var(--bg-main);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
+    font-weight: 600;
 }
 
 .modal-footer {
@@ -797,9 +921,9 @@ input:focus, select:focus, textarea:focus {
 }
 
 .alert-danger {
-    background-color: var(--danger-light);
+    background-color: var(--expense-light);
     color: #b91c1c;
-    border: 1px solid #fecaca;
+    border: 1px solid var(--expense-border);
 }
 
 /* ==============================================================================
@@ -833,33 +957,16 @@ input:focus, select:focus, textarea:focus {
     animation: toastIn 0.25s ease-out forwards;
 }
 
-.toast-success {
-    border-left: 4px solid var(--success);
-}
-
-.toast-error {
-    border-left: 4px solid var(--danger);
-}
-
-.toast-warning {
-    border-left: 4px solid var(--warning);
-}
+.toast-success { border-left: 4px solid var(--income); }
+.toast-error { border-left: 4px solid var(--expense); }
+.toast-warning { border-left: 4px solid var(--warning); }
 
 @keyframes toastIn {
-    from {
-        opacity: 0;
-        transform: translateX(20px);
-    }
-    to {
-        opacity: 1;
-        transform: translateX(0);
-    }
+    from { opacity: 0; transform: translateX(20px); }
+    to { opacity: 1; transform: translateX(0); }
 }
 
-/* ==============================================================================
- * Footer
- * ============================================================================== */
-
+/* Footer */
 .footer {
     margin-top: 2rem;
     border-top: 1px solid var(--border);
@@ -879,8 +986,11 @@ input:focus, select:focus, textarea:focus {
 .text-sm { font-size: 0.8125rem; }
 .text-xs { font-size: 0.75rem; }
 .text-center { text-align: center; }
+.font-medium { font-weight: 500; }
+.font-semibold { font-weight: 600; }
 .py-4 { padding-top: 1rem; padding-bottom: 1rem; }
 .py-6 { padding-top: 1.5rem; padding-bottom: 1.5rem; }
 .mt-1 { margin-top: 0.25rem; }
+.mt-2 { margin-top: 0.5rem; }
 .mt-3 { margin-top: 0.75rem; }
 .hidden { display: none !important; }

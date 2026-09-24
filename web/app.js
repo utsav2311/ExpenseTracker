@@ -1,38 +1,43 @@
 /**
  * ==============================================================================
- * ExpenseTracker - Vanilla JavaScript Frontend Client
+ * Personal Income & Expense Tracker - Vanilla JavaScript Frontend
  * Demonstrates:
  *  - Modern JavaScript Fetch API (async/await, HTTP GET/POST/PUT/DELETE)
  *  - RESTful API consumption and JSON serialization
- *  - DOM manipulation and event delegation
- *  - Pure HTML5 Canvas charting (Zero external chart libraries)
+ *  - Dynamic form category cascading based on transaction type (INCOME / EXPENSE)
+ *  - Pure HTML5 Canvas charting (Zero third-party chart libraries)
  *  - Real-time debouncing, input validation, and toast notifications
+ *  - Indian Rupee (₹) currency formatting
  * ==============================================================================
  */
 
-// Global State
+// Application State
 const state = {
     categories: [],
-    paymentMethods: [],
-    expenses: [],
-    summary: null,
-    budgets: [],
-    deleteTargetId: null,
+    transactions: [],
+    dashboard: null,
+    monthly: null,
+    selectedMonth: new Date().toISOString().substring(0, 7), // "YYYY-MM"
+    deleteTarget: null,
     searchDebounceTimer: null
 };
 
-// Category Color Palette for Badges and Charts
+// Vibrant, accessible category colors for badges and charts
 const CATEGORY_COLORS = {
-    FOOD: '#f59e0b',
-    TRANSPORTATION: '#3b82f6',
-    HOUSING: '#8b5cf6',
-    UTILITIES: '#10b981',
-    ENTERTAINMENT: '#ec4899',
-    HEALTHCARE: '#ef4444',
-    SHOPPING: '#6366f1',
-    EDUCATION: '#06b6d4',
-    PERSONAL: '#14b8a6',
-    OTHER: '#64748b'
+    Salary: '#059669',
+    Freelance: '#10b981',
+    Bonus: '#14b8a6',
+    Investment: '#0ea5e9',
+    'Other Income': '#6366f1',
+    Food: '#f59e0b',
+    Travel: '#3b82f6',
+    Shopping: '#8b5cf6',
+    Bills: '#ef4444',
+    Entertainment: '#ec4899',
+    Education: '#06b6d4',
+    Health: '#f43f5e',
+    Rent: '#64748b',
+    'Other Expense': '#94a3b8'
 };
 
 // =============================================================================
@@ -43,9 +48,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     initializeDateDefaults();
     bindEventListeners();
 
-    // Load initial metadata and data
-    await loadMeta();
+    // Check system status and load initial dataset
     await checkSystemStatus();
+    await loadCategories();
     await refreshAllData();
 });
 
@@ -54,11 +59,11 @@ function initializeDateDefaults() {
     const formDate = document.getElementById('formDate');
     if (formDate) formDate.value = today;
 
-    const budgetMonth = document.getElementById('budgetMonth');
-    if (budgetMonth) {
-        const ym = today.substring(0, 7);
-        budgetMonth.value = ym;
-    }
+    const summaryPicker = document.getElementById('summaryMonthPicker');
+    if (summaryPicker) summaryPicker.value = state.selectedMonth;
+
+    const budgetMonthInput = document.getElementById('budgetMonthInput');
+    if (budgetMonthInput) budgetMonthInput.value = state.selectedMonth;
 }
 
 // =============================================================================
@@ -66,143 +71,387 @@ function initializeDateDefaults() {
 // =============================================================================
 
 /**
- * Fetch Categories and PaymentMethods metadata from backend.
- */
-async function loadMeta() {
-    try {
-        const res = await fetch('/api/meta');
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-
-        state.categories = data.categories || [];
-        state.paymentMethods = data.paymentMethods || [];
-
-        populateSelectOptions();
-    } catch (err) {
-        console.error('Failed to load metadata:', err);
-        showToast('Failed to load metadata from server', 'error');
-    }
-}
-
-/**
- * Checks server health and persistence storage type (MySQL vs In-Memory).
+ * Checks server health and database connection status.
  */
 async function checkSystemStatus() {
     try {
         const res = await fetch('/api/status');
         if (res.ok) {
-            const result = await res.json();
-            const info = result.data;
+            const data = await res.json();
+            const info = data.data;
             const storageLabel = document.getElementById('storageLabel');
             const storageBadge = document.getElementById('storageBadge');
+            const dot = storageBadge ? storageBadge.querySelector('.status-dot') : null;
 
-            if (storageLabel) {
-                storageLabel.textContent = info.storage || 'Connected';
+            if (storageLabel) storageLabel.textContent = info.storage || 'Connected';
+            if (dot) {
+                if (info.databaseAvailable || info.storage.includes('Memory')) {
+                    dot.className = 'status-dot';
+                } else {
+                    dot.className = 'status-dot status-dot-offline';
+                }
             }
-            if (storageBadge && !info.isDatabase) {
-                storageBadge.title = 'MySQL not detected; operating in high-performance In-Memory Collections mode.';
-            }
+            hideBackendError();
+        } else {
+            showBackendError();
         }
     } catch (err) {
-        console.error('System status check error:', err);
+        showBackendError();
     }
 }
 
 /**
- * Loads filtered and sorted expenses via Fetch API with query params.
+ * Loads categories from /api/categories.
  */
-async function loadExpenses() {
+async function loadCategories() {
+    try {
+        const res = await fetch('/api/categories');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        state.categories = data.categories || [];
+        populateFilterCategories();
+        updateModalCategories('EXPENSE');
+        hideBackendError();
+    } catch (err) {
+        console.error('Failed to load categories:', err);
+        showBackendError();
+    }
+}
+
+/**
+ * Loads primary dashboard metrics from /api/dashboard.
+ */
+async function loadDashboard() {
+    try {
+        const res = await fetch('/api/dashboard');
+        if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            throw new Error(errData.error || `HTTP ${res.status}`);
+        }
+        const data = await res.json();
+        state.dashboard = data;
+        renderDashboardKPIs(data);
+        renderRecentTransactions(data.recentTransactions || []);
+        hideBackendError();
+    } catch (err) {
+        console.error('Failed to load dashboard:', err);
+        showBackendError();
+    }
+}
+
+/**
+ * Loads monthly financial summary for the currently selected month/year.
+ */
+async function loadMonthlyReport() {
+    try {
+        const [yearStr, monthStr] = state.selectedMonth.split('-');
+        const res = await fetch(`/api/reports/monthly?month=${parseInt(monthStr)}&year=${parseInt(yearStr)}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        state.monthly = data;
+        renderMonthlySummary(data);
+    } catch (err) {
+        console.error('Failed to load monthly report:', err);
+    }
+}
+
+/**
+ * Loads expense category breakdown report for canvas chart.
+ */
+async function loadCategoryReport() {
+    try {
+        const [yearStr, monthStr] = state.selectedMonth.split('-');
+        const res = await fetch(`/api/reports/categories?month=${parseInt(monthStr)}&year=${parseInt(yearStr)}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        renderDonutChart(data.categories || []);
+    } catch (err) {
+        console.error('Failed to load category report:', err);
+    }
+}
+
+/**
+ * Loads Top 5 highest single expenses.
+ */
+async function loadTopExpenses() {
+    try {
+        const res = await fetch('/api/reports/top-expenses?limit=5');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        renderTopExpenses(data.topExpenses || []);
+    } catch (err) {
+        console.error('Failed to load top expenses:', err);
+    }
+}
+
+/**
+ * Loads filtered and sorted transactions from /api/transactions.
+ */
+async function loadTransactions() {
     const search = document.getElementById('filterSearch').value.trim();
+    const type = document.getElementById('filterType').value;
     const category = document.getElementById('filterCategory').value;
-    const paymentMethod = document.getElementById('filterPaymentMethod').value;
-    const startDate = document.getElementById('filterStartDate').value;
-    const endDate = document.getElementById('filterEndDate').value;
-    const sortBy = document.getElementById('filterSortBy').value;
-    const sortOrder = document.getElementById('filterSortOrder').value;
-    const algo = document.getElementById('filterAlgo').value;
+    const datePreset = document.getElementById('filterDatePreset').value;
+    const sort = document.getElementById('filterSort').value;
+
+    let startDate = '';
+    let endDate = '';
+
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+
+    if (datePreset === 'TODAY') {
+        startDate = todayStr;
+        endDate = todayStr;
+    } else if (datePreset === 'THIS_MONTH') {
+        const y = now.getFullYear();
+        const m = String(now.getMonth() + 1).padStart(2, '0');
+        startDate = `${y}-${m}-01`;
+        const lastDay = new Date(y, now.getMonth() + 1, 0).getDate();
+        endDate = `${y}-${m}-${lastDay}`;
+    } else if (datePreset === 'LAST_MONTH') {
+        const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        const y = prev.getFullYear();
+        const m = String(prev.getMonth() + 1).padStart(2, '0');
+        startDate = `${y}-${m}-01`;
+        const lastDay = new Date(y, prev.getMonth() + 1, 0).getDate();
+        endDate = `${y}-${m}-${lastDay}`;
+    } else if (datePreset === 'CUSTOM') {
+        startDate = document.getElementById('filterStartDate').value;
+        endDate = document.getElementById('filterEndDate').value;
+    }
 
     const params = new URLSearchParams();
-    if (search) params.append('search', search);
+    if (type && type !== 'ALL') params.append('type', type);
     if (category && category !== 'ALL') params.append('category', category);
-    if (paymentMethod && paymentMethod !== 'ALL') params.append('paymentMethod', paymentMethod);
     if (startDate) params.append('startDate', startDate);
     if (endDate) params.append('endDate', endDate);
-    if (sortBy) params.append('sortBy', sortBy);
-    if (sortOrder) params.append('sortOrder', sortOrder);
-    if (algo) params.append('algo', algo);
+    if (search) params.append('search', search);
+    if (sort) params.append('sort', sort);
 
-    const startTime = performance.now();
     try {
-        const res = await fetch(`/api/expenses?${params.toString()}`);
+        const res = await fetch(`/api/transactions?${params.toString()}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
-        const duration = (performance.now() - startTime).toFixed(1);
-
-        state.expenses = data.expenses || [];
-        renderExpensesTable(state.expenses);
-
-        // Update DSA Algorithm benchmark indicator
-        const algoTag = document.getElementById('algoIndicator');
-        const benchTag = document.getElementById('dsaBenchmarkTag');
-        if (algoTag) algoTag.textContent = `Algo: ${data.algorithmUsed || algo}`;
-        if (benchTag) benchTag.textContent = `${data.count} items (${duration}ms API)`;
-
+        state.transactions = data.transactions || [];
+        renderTransactionsTable(state.transactions);
+        hideBackendError();
     } catch (err) {
-        console.error('Failed to load expenses:', err);
-        showToast('Error loading expenses: ' + err.message, 'error');
+        console.error('Failed to load transactions:', err);
+        showToast('Error loading transactions: ' + err.message, 'error');
     }
 }
 
 /**
- * Loads financial summary metrics and triggers canvas chart rendering.
+ * Refreshes all application data in parallel.
  */
-async function loadSummary() {
-    try {
-        const res = await fetch('/api/summary');
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        state.summary = data.summary;
-        renderSummaryKPIs(state.summary);
-        renderDonutChart(state.summary);
-    } catch (err) {
-        console.error('Failed to load summary:', err);
-    }
-}
-
-/**
- * Loads monthly budgets and current spend progress.
- */
-async function loadBudgets() {
-    try {
-        const today = new Date().toISOString().substring(0, 7);
-        const res = await fetch(`/api/budgets?monthYear=${today}`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        state.budgets = data.budgets || [];
-        renderBudgetsList(state.budgets);
-    } catch (err) {
-        console.error('Failed to load budgets:', err);
-    }
-}
-
 async function refreshAllData() {
-    await Promise.all([loadExpenses(), loadSummary(), loadBudgets()]);
+    await Promise.all([
+        loadDashboard(),
+        loadMonthlyReport(),
+        loadCategoryReport(),
+        loadTopExpenses(),
+        loadTransactions()
+    ]);
 }
 
 // =============================================================================
-//  DOM RENDERING: EXPENSES TABLE
+//  DOM RENDERING: DASHBOARD KPIS (4 Cards)
 // =============================================================================
 
-function renderExpensesTable(expenses) {
-    const tbody = document.getElementById('expensesTableBody');
-    const emptyState = document.getElementById('emptyState');
-    const recordCount = document.getElementById('tableRecordCount');
+function renderDashboardKPIs(data) {
+    if (!data) return;
 
-    if (recordCount) {
-        recordCount.textContent = `Showing ${expenses.length} transaction${expenses.length === 1 ? '' : 's'}`;
+    // Current Balance = Total Income - Total Expenses
+    const balanceEl = document.getElementById('kpiBalance');
+    const balanceSub = document.getElementById('kpiBalanceSub');
+    const bal = data.balance || 0;
+
+    balanceEl.textContent = formatCurrency(Math.abs(bal));
+    if (bal >= 0) {
+        balanceEl.className = 'metric-value text-income';
+        balanceSub.textContent = 'Net positive financial reserve';
+    } else {
+        balanceEl.className = 'metric-value text-expense';
+        balanceSub.textContent = 'Net deficit (Expenses exceed Income)';
     }
 
-    if (!expenses || expenses.length === 0) {
+    // Total Income
+    const incomeEl = document.getElementById('kpiTotalIncome');
+    incomeEl.textContent = '+ ' + formatCurrency(data.totalIncome || 0);
+
+    // Total Expenses
+    const expenseEl = document.getElementById('kpiTotalExpense');
+    expenseEl.textContent = '- ' + formatCurrency(data.totalExpense || 0);
+
+    // Monthly Budget
+    const budgetEl = document.getElementById('kpiMonthlyBudget');
+    const budgetFooter = document.getElementById('kpiBudgetFooter');
+    const monthlyBudget = data.monthlyBudget || 0;
+    const budgetRemaining = data.budgetRemaining || 0;
+    const budgetPct = data.budgetPercentage || 0;
+
+    budgetEl.textContent = formatCurrency(monthlyBudget);
+    if (monthlyBudget > 0) {
+        if (budgetRemaining < 0) {
+            budgetFooter.textContent = `Budget exceeded by ${formatCurrency(Math.abs(budgetRemaining))}!`;
+            budgetFooter.style.color = 'var(--expense)';
+        } else {
+            budgetFooter.textContent = `${budgetPct.toFixed(0)}% used • ${formatCurrency(budgetRemaining)} remaining`;
+            budgetFooter.style.color = 'var(--text-muted)';
+        }
+    } else {
+        budgetFooter.textContent = 'No budget configured for this month';
+    }
+}
+
+// =============================================================================
+//  DOM RENDERING: MONTHLY SUMMARY & BUDGET PROGRESS
+// =============================================================================
+
+function renderMonthlySummary(summary) {
+    if (!summary) return;
+
+    document.getElementById('monthlySummaryHeading').textContent = `Monthly Financial Summary (${summary.monthName || state.selectedMonth})`;
+    document.getElementById('monthIncomeVal').textContent = '+ ' + formatCurrency(summary.income || 0);
+    document.getElementById('monthExpenseVal').textContent = '- ' + formatCurrency(summary.expenses || 0);
+
+    const savingsVal = document.getElementById('monthSavingsVal');
+    const savings = summary.savings || 0;
+    savingsVal.textContent = (savings >= 0 ? '+ ' : '- ') + formatCurrency(Math.abs(savings));
+    savingsVal.className = 'stat-value ' + (savings >= 0 ? 'text-income' : 'text-expense');
+
+    document.getElementById('monthTxCountVal').textContent = summary.transactionCount || 0;
+
+    const highestExpEl = document.getElementById('monthHighestExpenseVal');
+    if (summary.highestExpense) {
+        highestExpEl.textContent = `${formatCurrency(summary.highestExpense.amount)} (${summary.highestExpense.description})`;
+    } else {
+        highestExpEl.textContent = 'None';
+    }
+
+    const topCatEl = document.getElementById('monthTopCategoryVal');
+    if (summary.highestSpendingCategory) {
+        topCatEl.textContent = `${summary.highestSpendingCategory} (${formatCurrency(summary.highestSpendingCategoryAmount || 0)})`;
+    } else {
+        topCatEl.textContent = 'None';
+    }
+
+    // Budget Tracker Progress Bar
+    const budgetAmount = summary.budgetAmount || 0;
+    const expenses = summary.expenses || 0;
+    const remaining = summary.remainingBudget || 0;
+    const pct = summary.budgetPercentageUsed || 0;
+
+    const progressLabel = document.getElementById('budgetProgressLabel');
+    const progressBar = document.getElementById('budgetProgressBar');
+    const remainingNote = document.getElementById('budgetRemainingNote');
+
+    if (budgetAmount > 0) {
+        progressLabel.textContent = `${formatCurrency(expenses)} spent of ${formatCurrency(budgetAmount)} (${pct.toFixed(1)}%)`;
+
+        let progressClass = 'progress-normal';
+        if (pct > 100) {
+            progressClass = 'progress-exceeded';
+            remainingNote.textContent = `⚠️ Budget exceeded by ${formatCurrency(Math.abs(remaining))}`;
+            remainingNote.style.color = 'var(--expense)';
+            remainingNote.style.fontWeight = '600';
+        } else if (pct >= 90) {
+            progressClass = 'progress-warning';
+            remainingNote.textContent = `High utilization: ${formatCurrency(remaining)} remaining`;
+            remainingNote.style.color = 'var(--warning)';
+        } else if (pct >= 70) {
+            progressClass = 'progress-warning';
+            remainingNote.textContent = `Warning: ${formatCurrency(remaining)} remaining`;
+            remainingNote.style.color = 'var(--warning)';
+        } else {
+            progressClass = 'progress-normal';
+            remainingNote.textContent = `Remaining budget: ${formatCurrency(remaining)}`;
+            remainingNote.style.color = 'var(--text-muted)';
+        }
+
+        progressBar.className = `budget-progress-bar ${progressClass}`;
+        progressBar.style.width = `${Math.min(pct, 100)}%`;
+    } else {
+        progressLabel.textContent = `${formatCurrency(expenses)} spent (No budget set)`;
+        progressBar.style.width = '0%';
+        remainingNote.textContent = 'Click "Budget" in the header to set an expense limit for this month.';
+        remainingNote.style.color = 'var(--text-muted)';
+    }
+}
+
+// =============================================================================
+//  DOM RENDERING: TOP 5 EXPENSES & RECENT TRANSACTIONS
+// =============================================================================
+
+function renderTopExpenses(topExpenses) {
+    const container = document.getElementById('topExpensesList');
+    if (!topExpenses || topExpenses.length === 0) {
+        container.innerHTML = '<p class="text-muted text-center py-4 text-sm">No expenses recorded yet.</p>';
+        return;
+    }
+
+    let html = '';
+    topExpenses.forEach((t, idx) => {
+        html += `
+            <div class="list-item-row">
+                <div class="item-left">
+                    <span style="font-weight: 700; color: var(--text-muted); font-size: 0.8rem; width: 18px;">#${idx + 1}</span>
+                    <div>
+                        <div class="item-title">${escapeHtml(t.description)}</div>
+                        <div class="item-sub">${escapeHtml(t.categoryName || 'Expense')} • ${t.transactionDate}</div>
+                    </div>
+                </div>
+                <span class="item-amount text-expense">- ${formatCurrency(t.amount)}</span>
+            </div>
+        `;
+    });
+    container.innerHTML = html;
+}
+
+function renderRecentTransactions(recent) {
+    const container = document.getElementById('recentTransactionsList');
+    if (!recent || recent.length === 0) {
+        container.innerHTML = '<p class="text-muted text-center py-4 text-sm">No recent transactions.</p>';
+        return;
+    }
+
+    let html = '';
+    recent.forEach(t => {
+        const isInc = t.transactionType === 'INCOME';
+        const colorClass = isInc ? 'text-income' : 'text-expense';
+        const sign = isInc ? '+ ' : '- ';
+
+        html += `
+            <div class="list-item-row">
+                <div class="item-left">
+                    <span style="font-size: 1.1rem;">${t.categoryIcon || (isInc ? '💼' : '🛍️')}</span>
+                    <div>
+                        <div class="item-title">${escapeHtml(t.description)}</div>
+                        <div class="item-sub">${escapeHtml(t.categoryName || t.transactionType)} • ${t.transactionDate}</div>
+                    </div>
+                </div>
+                <span class="item-amount ${colorClass}">${sign}${formatCurrency(t.amount)}</span>
+            </div>
+        `;
+    });
+    container.innerHTML = html;
+}
+
+// =============================================================================
+//  DOM RENDERING: TRANSACTIONS TABLE
+// =============================================================================
+
+function renderTransactionsTable(transactions) {
+    const tbody = document.getElementById('transactionsTableBody');
+    const emptyState = document.getElementById('emptyState');
+    const badge = document.getElementById('tableRecordCountBadge');
+
+    if (badge) {
+        badge.textContent = `${transactions.length} record${transactions.length === 1 ? '' : 's'}`;
+    }
+
+    if (!transactions || transactions.length === 0) {
         tbody.innerHTML = '';
         emptyState.classList.remove('hidden');
         return;
@@ -211,38 +460,41 @@ function renderExpensesTable(expenses) {
     emptyState.classList.add('hidden');
     let html = '';
 
-    expenses.forEach(e => {
-        const catColor = CATEGORY_COLORS[e.category] || '#64748b';
+    transactions.forEach(t => {
+        const isInc = t.transactionType === 'INCOME';
+        const typeBadge = isInc ? 'badge-income' : 'badge-expense';
+        const amountClass = isInc ? 'text-income' : 'text-expense';
+        const sign = isInc ? '+ ' : '- ';
+
         html += `
             <tr>
-                <td style="font-family: var(--font-mono); color: var(--text-muted);">#${e.id}</td>
                 <td>
-                    <div style="font-weight: 500;">${e.displayDate || e.date}</div>
-                    <div class="text-muted text-xs">${e.date}</div>
+                    <div style="font-weight: 500;">${t.displayDate || t.transactionDate}</div>
+                    <div class="text-muted text-xs">${t.transactionDate}</div>
                 </td>
                 <td>
-                    <div class="table-title">${escapeHtml(e.title)}</div>
-                    ${e.notes ? `<div class="table-notes" title="${escapeHtml(e.notes)}">${escapeHtml(e.notes)}</div>` : ''}
+                    <div class="table-title">${escapeHtml(t.description)}</div>
+                    ${t.notes ? `<div class="table-notes" title="${escapeHtml(t.notes)}">${escapeHtml(t.notes)}</div>` : ''}
                 </td>
                 <td>
-                    <span class="badge badge-cat" style="background-color: ${catColor}15; color: ${catColor}; border: 1px solid ${catColor}35;">
-                        <span>${e.categoryIcon || '🏷️'}</span>
-                        <span>${escapeHtml(e.categoryName || e.category)}</span>
+                    <span class="badge badge-cat">
+                        <span>${t.categoryIcon || '🏷️'}</span>
+                        <span>${escapeHtml(t.categoryName || 'General')}</span>
                     </span>
                 </td>
+                <td style="text-align: center;">
+                    <span class="badge badge-type ${typeBadge}">${t.transactionType}</span>
+                </td>
                 <td>
-                    <span class="badge badge-pm">
-                        <span>${e.paymentMethodIcon || '💳'}</span>
-                        <span>${escapeHtml(e.paymentMethodName || e.paymentMethod)}</span>
-                    </span>
+                    <span class="badge badge-pm">${escapeHtml(t.paymentMethod || 'Cash')}</span>
                 </td>
                 <td style="text-align: right;">
-                    <span class="table-amount">$${formatAmount(e.amount)}</span>
+                    <span class="table-amount ${amountClass}">${sign}${formatCurrency(t.amount)}</span>
                 </td>
                 <td style="text-align: center;">
                     <div class="table-actions">
-                        <button class="action-btn action-btn-edit" onclick="openEditModal(${e.id})" title="Edit Expense">✏️</button>
-                        <button class="action-btn action-btn-delete" onclick="openDeleteModal(${e.id}, '${escapeHtml(e.title)}')" title="Delete Expense">🗑️</button>
+                        <button class="action-btn action-btn-edit" onclick="openEditModal(${t.transactionId})" title="Edit Transaction">✏️</button>
+                        <button class="action-btn action-btn-delete" onclick="openDeleteModal(${t.transactionId})" title="Delete Transaction">🗑️</button>
                     </div>
                 </td>
             </tr>
@@ -253,143 +505,49 @@ function renderExpensesTable(expenses) {
 }
 
 // =============================================================================
-//  DOM RENDERING: SUMMARY KPIS
+//  CANVAS DONUT CHART: EXPENSE BY CATEGORY
 // =============================================================================
 
-function renderSummaryKPIs(summary) {
-    if (!summary) return;
-
-    document.getElementById('kpiTotalSpent').textContent = `$${formatAmount(summary.totalExpenses)}`;
-    document.getElementById('kpiTotalCount').textContent = `${summary.totalCount} total transaction${summary.totalCount === 1 ? '' : 's'}`;
-    document.getElementById('kpiAverage').textContent = `$${formatAmount(summary.averageExpense)}`;
-
-    const kpiTopCatName = document.getElementById('kpiTopCatName');
-    const kpiTopCatIcon = document.getElementById('kpiTopCatIcon');
-    const kpiTopCatAmount = document.getElementById('kpiTopCatAmount');
-
-    if (summary.topCategory) {
-        kpiTopCatName.textContent = summary.topCategoryName || summary.topCategory;
-        kpiTopCatIcon.textContent = summary.topCategoryIcon || '🛍️';
-        kpiTopCatAmount.textContent = `$${formatAmount(summary.topCategoryAmount)} spent`;
-    } else {
-        kpiTopCatName.textContent = 'None';
-        kpiTopCatIcon.textContent = '🛍️';
-        kpiTopCatAmount.textContent = '$0.00 spent';
-    }
-
-    const kpiHighestAmount = document.getElementById('kpiHighestAmount');
-    const kpiHighestTitle = document.getElementById('kpiHighestTitle');
-
-    if (summary.highestExpense) {
-        kpiHighestAmount.textContent = `$${formatAmount(summary.highestExpense.amount)}`;
-        kpiHighestTitle.textContent = `${summary.highestExpense.title} (${summary.highestExpense.displayDate || summary.highestExpense.date})`;
-    } else {
-        kpiHighestAmount.textContent = '$0.00';
-        kpiHighestTitle.textContent = 'No records';
-    }
-}
-
-// =============================================================================
-//  DOM RENDERING: BUDGETS LIST
-// =============================================================================
-
-function renderBudgetsList(budgets) {
-    const container = document.getElementById('budgetsListContainer');
-    if (!budgets || budgets.length === 0) {
-        container.innerHTML = `
-            <div class="text-center py-4">
-                <p class="text-muted text-sm">No monthly budgets configured.</p>
-                <button class="btn btn-outline btn-sm mt-1" onclick="openBudgetModal()">Set Your First Budget</button>
-            </div>
-        `;
-        return;
-    }
-
-    let html = '';
-    budgets.forEach(b => {
-        const pct = b.percentageUsed || 0;
-        let colorClass = 'progress-green';
-        if (pct >= 90 || b.isExceeded) {
-            colorClass = 'progress-red';
-        } else if (pct >= 70) {
-            colorClass = 'progress-orange';
-        }
-
-        html += `
-            <div class="budget-item">
-                <div class="budget-item-header">
-                    <span class="budget-cat-name">
-                        <span>${b.categoryIcon || '🎯'}</span>
-                        <span>${escapeHtml(b.categoryName || b.category)}</span>
-                    </span>
-                    <span class="budget-amounts">
-                        <strong>$${formatAmount(b.spent)}</strong> / $${formatAmount(b.monthlyLimit)}
-                        <span class="text-xs" style="color: ${b.isExceeded ? 'var(--danger)' : 'var(--text-muted)'}; font-weight: 600;">
-                            (${b.isExceeded ? 'EXCEEDED' : pct.toFixed(0) + '%'})
-                        </span>
-                    </span>
-                </div>
-                <div class="budget-progress-bar">
-                    <div class="budget-progress-fill ${colorClass}" style="width: ${Math.min(pct, 100)}%;"></div>
-                </div>
-            </div>
-        `;
-    });
-
-    container.innerHTML = html;
-}
-
-// =============================================================================
-//  CANVAS DONUT CHART (Zero external dependencies)
-// =============================================================================
-
-function renderDonutChart(summary) {
+function renderDonutChart(categories) {
     const canvas = document.getElementById('categoryDonutChart');
     const legend = document.getElementById('chartLegend');
-    if (!canvas || !summary) return;
+    if (!canvas) return;
 
     const ctx = canvas.getContext('2d');
     const width = canvas.width;
     const height = canvas.height;
     ctx.clearRect(0, 0, width, height);
 
-    const breakdown = summary.categoryBreakdown || {};
-    const percentages = summary.categoryPercentages || {};
-    const categories = Object.keys(breakdown);
-
-    if (categories.length === 0 || summary.totalExpenses <= 0) {
-        // Draw empty placeholder circle
+    if (!categories || categories.length === 0) {
         ctx.beginPath();
-        ctx.arc(width / 2, height / 2, 70, 0, 2 * Math.PI);
+        ctx.arc(width / 2, height / 2, 60, 0, 2 * Math.PI);
         ctx.strokeStyle = '#e2e8f0';
-        ctx.lineWidth = 25;
+        ctx.lineWidth = 20;
         ctx.stroke();
 
         ctx.fillStyle = '#94a3b8';
-        ctx.font = '14px sans-serif';
+        ctx.font = '13px sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText('No Data', width / 2, height / 2);
+        ctx.fillText('No Expenses', width / 2, height / 2);
 
-        legend.innerHTML = '<span class="text-muted text-xs">No expenses to display</span>';
+        legend.innerHTML = '<span class="text-muted text-xs">No expense data for this month</span>';
         return;
     }
 
+    const totalExpense = categories.reduce((sum, c) => sum + c.totalAmount, 0);
     const centerX = width / 2;
     const centerY = height / 2;
-    const radius = 75;
-    const lineWidth = 26;
+    const radius = 65;
+    const lineWidth = 22;
 
     let startAngle = -0.5 * Math.PI;
     let legendHtml = '';
 
     categories.forEach(cat => {
-        const amount = breakdown[cat];
-        const pct = percentages[cat] || ((amount / summary.totalExpenses) * 100);
-        const sliceAngle = (amount / summary.totalExpenses) * (2 * Math.PI);
-        const color = CATEGORY_COLORS[cat] || '#64748b';
+        const sliceAngle = (cat.totalAmount / totalExpense) * (2 * Math.PI);
+        const color = CATEGORY_COLORS[cat.categoryName] || '#64748b';
 
-        // Draw donut segment
         ctx.beginPath();
         ctx.arc(centerX, centerY, radius, startAngle, startAngle + sliceAngle);
         ctx.strokeStyle = color;
@@ -398,104 +556,112 @@ function renderDonutChart(summary) {
 
         startAngle += sliceAngle;
 
-        // Build Legend Item
-        const catObj = state.categories.find(c => c.code === cat);
-        const label = catObj ? catObj.name : cat;
-        const icon = catObj ? catObj.icon : '🏷️';
-
         legendHtml += `
-            <div class="legend-item" title="${label}: $${formatAmount(amount)} (${pct.toFixed(1)}%)">
+            <div class="legend-item" title="${cat.categoryName}: ${formatCurrency(cat.totalAmount)} (${cat.percentage}%)">
                 <span class="legend-color-dot" style="background-color: ${color};"></span>
-                <span class="legend-label">${icon} ${escapeHtml(label)}</span>
-                <span class="legend-value">${pct.toFixed(0)}%</span>
+                <span class="legend-label">${cat.icon || '🏷️'} ${escapeHtml(cat.categoryName)}</span>
+                <span class="legend-value">${cat.percentage}%</span>
             </div>
         `;
     });
 
-    // Center total label
     ctx.fillStyle = '#0f172a';
-    ctx.font = 'bold 15px sans-serif';
+    ctx.font = 'bold 13px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(`$${formatAmount(summary.totalExpenses)}`, centerX, centerY - 6);
+    ctx.fillText(formatCurrency(totalExpense), centerX, centerY - 6);
 
     ctx.fillStyle = '#64748b';
-    ctx.font = '11px sans-serif';
-    ctx.fillText('Total Spent', centerX, centerY + 12);
+    ctx.font = '10px sans-serif';
+    ctx.fillText('Expenses', centerX, centerY + 10);
 
     legend.innerHTML = legendHtml;
 }
 
 // =============================================================================
-//  FORM POPULATION & MODAL MANAGEMENT
+//  MODAL: CASCADING CATEGORY SELECTION & FORMS
 // =============================================================================
 
-function populateSelectOptions() {
+function populateFilterCategories() {
     const filterCat = document.getElementById('filterCategory');
-    const filterPm = document.getElementById('filterPaymentMethod');
-    const formCat = document.getElementById('formCategory');
-    const formPm = document.getElementById('formPaymentMethod');
-    const budgetCat = document.getElementById('budgetCategory');
+    if (!filterCat) return;
 
-    // Populate Categories
-    let filterCatOptions = '<option value="ALL">All Categories</option>';
-    let formCatOptions = '';
+    let options = '<option value="ALL">All Categories</option>';
     state.categories.forEach(c => {
-        filterCatOptions += `<option value="${c.code}">${c.icon} ${c.name}</option>`;
-        formCatOptions += `<option value="${c.code}">${c.icon} ${c.name}</option>`;
+        options += `<option value="${c.categoryId}">${c.icon || '🏷️'} ${escapeHtml(c.categoryName)} (${c.categoryType})</option>`;
     });
+    filterCat.innerHTML = options;
+}
 
-    if (filterCat) filterCat.innerHTML = filterCatOptions;
-    if (formCat) formCat.innerHTML = formCatOptions;
-    if (budgetCat) budgetCat.innerHTML = formCatOptions;
+/**
+ * Dynamically updates the Category select in Add/Edit modal based on selected type (INCOME or EXPENSE).
+ */
+function updateModalCategories(selectedType) {
+    const formCat = document.getElementById('formCategory');
+    const hint = document.getElementById('categoryTypeHint');
+    if (!formCat) return;
 
-    // Populate Payment Methods
-    let filterPmOptions = '<option value="ALL">All Methods</option>';
-    let formPmOptions = '';
-    state.paymentMethods.forEach(p => {
-        filterPmOptions += `<option value="${p.code}">${p.icon} ${p.name}</option>`;
-        formPmOptions += `<option value="${p.code}">${p.icon} ${p.name}</option>`;
+    const filtered = state.categories.filter(c => c.categoryType === selectedType);
+    let options = '';
+    filtered.forEach(c => {
+        options += `<option value="${c.categoryId}">${c.icon || '🏷️'} ${escapeHtml(c.categoryName)}</option>`;
     });
+    formCat.innerHTML = options;
 
-    if (filterPm) filterPm.innerHTML = filterPmOptions;
-    if (formPm) formPm.innerHTML = formPmOptions;
+    if (hint) {
+        hint.textContent = selectedType === 'INCOME' ? 'Showing income categories' : 'Showing expense categories';
+    }
 }
 
 function openAddModal() {
-    document.getElementById('modalTitle').textContent = 'Add New Expense';
-    document.getElementById('expenseId').value = '';
-    document.getElementById('expenseForm').reset();
+    document.getElementById('modalTitle').textContent = 'Add Transaction';
+    document.getElementById('txId').value = '';
+    document.getElementById('transactionForm').reset();
     initializeDateDefaults();
+
+    document.getElementById('typeRadioExpense').checked = true;
+    updateModalCategories('EXPENSE');
+
     document.getElementById('formErrorBanner').classList.add('hidden');
-    document.getElementById('expenseModal').classList.remove('hidden');
-    document.getElementById('formTitle').focus();
+    document.getElementById('transactionModal').classList.remove('hidden');
+    document.getElementById('formAmount').focus();
 }
 
 function openEditModal(id) {
-    const expense = state.expenses.find(e => e.id === id);
-    if (!expense) return;
+    const tx = state.transactions.find(t => t.transactionId === id);
+    if (!tx) return;
 
-    document.getElementById('modalTitle').textContent = `Edit Expense #${expense.id}`;
-    document.getElementById('expenseId').value = expense.id;
-    document.getElementById('formTitle').value = expense.title;
-    document.getElementById('formAmount').value = expense.amount;
-    document.getElementById('formDate').value = expense.date;
-    document.getElementById('formCategory').value = expense.category;
-    document.getElementById('formPaymentMethod').value = expense.paymentMethod;
-    document.getElementById('formNotes').value = expense.notes || '';
+    document.getElementById('modalTitle').textContent = `Edit Transaction #${tx.transactionId}`;
+    document.getElementById('txId').value = tx.transactionId;
+
+    const isInc = tx.transactionType === 'INCOME';
+    if (isInc) {
+        document.getElementById('typeRadioIncome').checked = true;
+        updateModalCategories('INCOME');
+    } else {
+        document.getElementById('typeRadioExpense').checked = true;
+        updateModalCategories('EXPENSE');
+    }
+
+    document.getElementById('formAmount').value = tx.amount;
+    document.getElementById('formDate').value = tx.transactionDate;
+    document.getElementById('formCategory').value = tx.categoryId;
+    document.getElementById('formDescription').value = tx.description;
+    document.getElementById('formPaymentMethod').value = tx.paymentMethod || 'Cash';
+    document.getElementById('formNotes').value = tx.notes || '';
     document.getElementById('formErrorBanner').classList.add('hidden');
 
-    document.getElementById('expenseModal').classList.remove('hidden');
-    document.getElementById('formTitle').focus();
+    document.getElementById('transactionModal').classList.remove('hidden');
+    document.getElementById('formDescription').focus();
 }
 
-function closeExpenseModal() {
-    document.getElementById('expenseModal').classList.add('hidden');
+function closeTransactionModal() {
+    document.getElementById('transactionModal').classList.add('hidden');
 }
 
 function openBudgetModal() {
     document.getElementById('budgetForm').reset();
-    initializeDateDefaults();
+    document.getElementById('budgetMonthInput').value = state.selectedMonth;
     document.getElementById('budgetErrorBanner').classList.add('hidden');
     document.getElementById('budgetModal').classList.remove('hidden');
 }
@@ -504,14 +670,24 @@ function closeBudgetModal() {
     document.getElementById('budgetModal').classList.add('hidden');
 }
 
-function openDeleteModal(id, title) {
-    state.deleteTargetId = id;
-    document.getElementById('deleteModalMessage').textContent = `Are you sure you want to permanently delete expense #${id}: "${title}"?`;
+function openDeleteModal(id) {
+    const tx = state.transactions.find(t => t.transactionId === id);
+    if (!tx) return;
+
+    state.deleteTarget = tx;
+    const preview = document.getElementById('deleteModalPreview');
+    const isInc = tx.transactionType === 'INCOME';
+    preview.innerHTML = `
+        <div>${escapeHtml(tx.description)}</div>
+        <div class="text-sm ${isInc ? 'text-income' : 'text-expense'}" style="margin-top: 0.2rem;">
+            ${isInc ? '+ ' : '- '}${formatCurrency(tx.amount)} (${tx.transactionType})
+        </div>
+    `;
     document.getElementById('deleteModal').classList.remove('hidden');
 }
 
 function closeDeleteModal() {
-    state.deleteTargetId = null;
+    state.deleteTarget = null;
     document.getElementById('deleteModal').classList.add('hidden');
 }
 
@@ -519,17 +695,21 @@ function closeDeleteModal() {
 //  FORM SUBMISSIONS (POST & PUT via Fetch API)
 // =============================================================================
 
-async function handleExpenseSubmit(e) {
+async function handleTransactionSubmit(e) {
     e.preventDefault();
-    const id = document.getElementById('expenseId').value;
+    const id = document.getElementById('txId').value;
     const isEdit = Boolean(id);
 
+    const typeRadio = document.querySelector('input[name="formTxType"]:checked');
+    const transactionType = typeRadio ? typeRadio.value : 'EXPENSE';
+
     const payload = {
-        title: document.getElementById('formTitle').value.trim(),
         amount: parseFloat(document.getElementById('formAmount').value),
-        date: document.getElementById('formDate').value,
-        category: document.getElementById('formCategory').value,
+        transactionType: transactionType,
+        categoryId: parseInt(document.getElementById('formCategory').value),
+        description: document.getElementById('formDescription').value.trim(),
         paymentMethod: document.getElementById('formPaymentMethod').value,
+        transactionDate: document.getElementById('formDate').value,
         notes: document.getElementById('formNotes').value.trim()
     };
 
@@ -537,7 +717,7 @@ async function handleExpenseSubmit(e) {
     errBanner.classList.add('hidden');
 
     try {
-        const url = isEdit ? `/api/expenses/${id}` : '/api/expenses';
+        const url = isEdit ? `/api/transactions/${id}` : '/api/transactions';
         const method = isEdit ? 'PUT' : 'POST';
 
         const res = await fetch(url, {
@@ -548,16 +728,11 @@ async function handleExpenseSubmit(e) {
 
         const data = await res.json();
         if (!res.ok || !data.success) {
-            throw new Error(data.error || 'Failed to save expense');
+            throw new Error(data.error || 'Failed to save transaction');
         }
 
-        closeExpenseModal();
-        showToast(data.message || 'Expense saved successfully!', 'success');
-
-        if (data.budgetExceeded) {
-            showToast(data.budgetWarning || 'Warning: Monthly budget exceeded!', 'warning');
-        }
-
+        closeTransactionModal();
+        showToast(isEdit ? 'Transaction updated successfully.' : 'Transaction added successfully.', 'success');
         await refreshAllData();
 
     } catch (err) {
@@ -568,17 +743,21 @@ async function handleExpenseSubmit(e) {
 
 async function handleBudgetSubmit(e) {
     e.preventDefault();
+    const monthStr = document.getElementById('budgetMonthInput').value;
+    const [year, month] = monthStr.split('-').map(Number);
+    const amount = parseFloat(document.getElementById('budgetAmountInput').value);
+
     const payload = {
-        category: document.getElementById('budgetCategory').value,
-        monthlyLimit: parseFloat(document.getElementById('budgetLimit').value),
-        monthYear: document.getElementById('budgetMonth').value
+        month: month,
+        year: year,
+        budgetAmount: amount
     };
 
     const errBanner = document.getElementById('budgetErrorBanner');
     errBanner.classList.add('hidden');
 
     try {
-        const res = await fetch('/api/budgets', {
+        const res = await fetch('/api/budget', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
@@ -590,8 +769,9 @@ async function handleBudgetSubmit(e) {
         }
 
         closeBudgetModal();
-        showToast('Budget saved successfully!', 'success');
-        await loadBudgets();
+        showToast('Monthly budget updated successfully.', 'success');
+        await loadDashboard();
+        await loadMonthlyReport();
 
     } catch (err) {
         errBanner.textContent = err.message;
@@ -599,19 +779,19 @@ async function handleBudgetSubmit(e) {
     }
 }
 
-async function confirmDeleteExpense() {
-    if (!state.deleteTargetId) return;
-    const id = state.deleteTargetId;
+async function confirmDeleteTransaction() {
+    if (!state.deleteTarget) return;
+    const id = state.deleteTarget.transactionId;
 
     try {
-        const res = await fetch(`/api/expenses/${id}`, { method: 'DELETE' });
+        const res = await fetch(`/api/transactions/${id}`, { method: 'DELETE' });
         const data = await res.json();
         if (!res.ok || !data.success) {
-            throw new Error(data.error || 'Failed to delete expense');
+            throw new Error(data.error || 'Failed to delete transaction');
         }
 
         closeDeleteModal();
-        showToast(`Expense #${id} deleted successfully`, 'success');
+        showToast('Transaction deleted.', 'success');
         await refreshAllData();
 
     } catch (err) {
@@ -621,89 +801,117 @@ async function confirmDeleteExpense() {
 }
 
 // =============================================================================
-//  DEMO RELOAD & CSV EXPORT
-// =============================================================================
-
-async function handleReloadDemo() {
-    if (!confirm('Reload sample expenses dataset? This will refresh your records with sample data.')) return;
-    try {
-        const res = await fetch('/api/demo', { method: 'POST' });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Failed to reload demo data');
-        showToast('Sample dataset reloaded successfully!', 'success');
-        await refreshAllData();
-    } catch (err) {
-        showToast('Error: ' + err.message, 'error');
-    }
-}
-
-function handleExportCsv() {
-    window.location.href = '/api/export';
-}
-
-function resetFilters() {
-    document.getElementById('filterSearch').value = '';
-    document.getElementById('filterCategory').value = 'ALL';
-    document.getElementById('filterPaymentMethod').value = 'ALL';
-    document.getElementById('filterStartDate').value = '';
-    document.getElementById('filterEndDate').value = '';
-    document.getElementById('filterSortBy').value = 'date';
-    document.getElementById('filterSortOrder').value = 'desc';
-    document.getElementById('filterAlgo').value = 'TIM_SORT';
-    loadExpenses();
-}
-
-// =============================================================================
-//  EVENT LISTENERS & DEBOUNCING
+//  EVENT LISTENERS & FILTERING
 // =============================================================================
 
 function bindEventListeners() {
-    // Modal buttons
+    // Transaction modal triggers
     document.getElementById('btnOpenAddModal').addEventListener('click', openAddModal);
-    document.getElementById('btnModalClose').addEventListener('click', closeExpenseModal);
-    document.getElementById('btnModalCancel').addEventListener('click', closeExpenseModal);
-    document.getElementById('expenseForm').addEventListener('submit', handleExpenseSubmit);
+    document.getElementById('btnModalClose').addEventListener('click', closeTransactionModal);
+    document.getElementById('btnModalCancel').addEventListener('click', closeTransactionModal);
+    document.getElementById('transactionForm').addEventListener('submit', handleTransactionSubmit);
 
+    // Dynamic category switching in modal
+    document.getElementById('typeRadioExpense').addEventListener('change', () => updateModalCategories('EXPENSE'));
+    document.getElementById('typeRadioIncome').addEventListener('change', () => updateModalCategories('INCOME'));
+
+    // Budget modal triggers
     document.getElementById('btnOpenBudgetModal').addEventListener('click', openBudgetModal);
     document.getElementById('btnBudgetModalClose').addEventListener('click', closeBudgetModal);
     document.getElementById('btnBudgetModalCancel').addEventListener('click', closeBudgetModal);
     document.getElementById('budgetForm').addEventListener('submit', handleBudgetSubmit);
 
+    // Delete modal triggers
     document.getElementById('btnDeleteModalClose').addEventListener('click', closeDeleteModal);
     document.getElementById('btnCancelDelete').addEventListener('click', closeDeleteModal);
-    document.getElementById('btnConfirmDelete').addEventListener('click', confirmDeleteExpense);
+    document.getElementById('btnConfirmDelete').addEventListener('click', confirmDeleteTransaction);
 
-    // Toolbar buttons
-    document.getElementById('btnExportCsv').addEventListener('click', handleExportCsv);
-    document.getElementById('btnReloadDemo').addEventListener('click', handleReloadDemo);
-    document.getElementById('btnResetFilters').addEventListener('click', resetFilters);
-
-    // Search input debouncing (300ms)
-    document.getElementById('filterSearch').addEventListener('input', () => {
-        clearTimeout(state.searchDebounceTimer);
-        state.searchDebounceTimer = setTimeout(loadExpenses, 280);
+    // CSV export
+    document.getElementById('btnExportCsv').addEventListener('click', () => {
+        window.location.href = '/api/export';
     });
 
-    // Dropdown filters
-    ['filterCategory', 'filterPaymentMethod', 'filterStartDate', 'filterEndDate', 'filterSortBy', 'filterSortOrder', 'filterAlgo']
-        .forEach(id => {
-            const el = document.getElementById(id);
-            if (el) el.addEventListener('change', loadExpenses);
-        });
+    // Retry connection button
+    document.getElementById('btnRetryConnection').addEventListener('click', async () => {
+        showToast('Checking connection...', 'info');
+        await checkSystemStatus();
+        await refreshAllData();
+    });
 
-    // Close modals on Escape key
+    // Reset filters
+    document.getElementById('btnResetFilters').addEventListener('click', resetFilters);
+
+    // Month Selector in Summary
+    document.getElementById('summaryMonthPicker').addEventListener('change', async (e) => {
+        state.selectedMonth = e.target.value;
+        await Promise.all([loadMonthlyReport(), loadCategoryReport()]);
+    });
+
+    // Search input debouncing (280ms)
+    document.getElementById('filterSearch').addEventListener('input', () => {
+        clearTimeout(state.searchDebounceTimer);
+        state.searchDebounceTimer = setTimeout(loadTransactions, 280);
+    });
+
+    // Filters
+    document.getElementById('filterType').addEventListener('change', loadTransactions);
+    document.getElementById('filterCategory').addEventListener('change', loadTransactions);
+    document.getElementById('filterSort').addEventListener('change', loadTransactions);
+
+    // Date Preset Filter
+    document.getElementById('filterDatePreset').addEventListener('change', (e) => {
+        const val = e.target.value;
+        const startWrap = document.getElementById('customDateStartWrapper');
+        const endWrap = document.getElementById('customDateEndWrapper');
+        if (val === 'CUSTOM') {
+            startWrap.classList.remove('hidden');
+            endWrap.classList.remove('hidden');
+        } else {
+            startWrap.classList.add('hidden');
+            endWrap.classList.add('hidden');
+            loadTransactions();
+        }
+    });
+
+    document.getElementById('filterStartDate').addEventListener('change', loadTransactions);
+    document.getElementById('filterEndDate').addEventListener('change', loadTransactions);
+
+    // Escape key modal close
     window.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
-            closeExpenseModal();
+            closeTransactionModal();
             closeBudgetModal();
             closeDeleteModal();
         }
     });
 }
 
+function resetFilters() {
+    document.getElementById('filterSearch').value = '';
+    document.getElementById('filterType').value = 'ALL';
+    document.getElementById('filterCategory').value = 'ALL';
+    document.getElementById('filterDatePreset').value = 'ALL';
+    document.getElementById('filterSort').value = 'newest';
+    document.getElementById('customDateStartWrapper').classList.add('hidden');
+    document.getElementById('customDateEndWrapper').classList.add('hidden');
+    document.getElementById('filterStartDate').value = '';
+    document.getElementById('filterEndDate').value = '';
+    loadTransactions();
+}
+
 // =============================================================================
-//  TOAST NOTIFICATION ENGINE
+//  ERROR STATES & TOASTS
 // =============================================================================
+
+function showBackendError() {
+    const el = document.getElementById('backendErrorState');
+    if (el) el.classList.remove('hidden');
+}
+
+function hideBackendError() {
+    const el = document.getElementById('backendErrorState');
+    if (el) el.classList.add('hidden');
+}
 
 function showToast(message, type = 'info') {
     const container = document.getElementById('toastContainer');
@@ -733,12 +941,12 @@ function showToast(message, type = 'info') {
 }
 
 // =============================================================================
-//  UTILITY HELPERS
+//  UTILITY HELPERS (Indian Rupee ₹ formatting)
 // =============================================================================
 
-function formatAmount(amount) {
-    if (amount === undefined || amount === null || isNaN(amount)) return '0.00';
-    return Number(amount).toLocaleString('en-US', {
+function formatCurrency(amount) {
+    if (amount === undefined || amount === null || isNaN(amount)) return '₹0.00';
+    return '₹' + Number(amount).toLocaleString('en-IN', {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2
     });

@@ -1,14 +1,17 @@
 package com.expensetracker.web;
 
-import com.expensetracker.dsa.ExpenseSorter;
-import com.expensetracker.exception.ExpenseNotFoundException;
-import com.expensetracker.exception.InvalidExpenseException;
+import com.expensetracker.exception.DatabaseOperationException;
+import com.expensetracker.exception.InvalidAmountException;
+import com.expensetracker.exception.InvalidTransactionException;
+import com.expensetracker.exception.TransactionNotFoundException;
 import com.expensetracker.model.Budget;
 import com.expensetracker.model.Category;
-import com.expensetracker.model.Expense;
-import com.expensetracker.model.ExpenseSummary;
-import com.expensetracker.model.PaymentMethod;
-import com.expensetracker.service.ExpenseService;
+import com.expensetracker.model.CategorySummary;
+import com.expensetracker.model.DashboardSummary;
+import com.expensetracker.model.MonthlySummary;
+import com.expensetracker.model.Transaction;
+import com.expensetracker.model.TransactionType;
+import com.expensetracker.service.TransactionService;
 import com.expensetracker.util.DateTimeUtil;
 import com.expensetracker.util.SimpleJson;
 import com.sun.net.httpserver.HttpExchange;
@@ -24,7 +27,6 @@ import java.net.InetSocketAddress;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -32,23 +34,22 @@ import java.util.Map;
 import java.util.concurrent.Executors;
 
 /**
- * Built-in Core Java HTTP Server and RESTful API controller.
+ * Built-in Core Java HTTP Server exposing clean RESTful JSON endpoints.
  * Demonstrates:
- *  - com.sun.net.httpserver.HttpServer (Zero external framework requirement)
+ *  - com.sun.net.httpserver.HttpServer (Zero external web frameworks)
  *  - REST API conventions: HTTP Methods (GET, POST, PUT, DELETE), Resource URIs, Status Codes
- *  - Query parameter extraction and body parsing
- *  - Static web file serving (HTML, CSS, JS) with appropriate MIME types
- *  - CORS support and centralized JSON error responses
+ *  - Same-origin static file serving (HTML, CSS, JS) with appropriate MIME headers
+ *  - Centralized JSON error response mapping without leaking server stack traces
  */
 public class ExpenseHttpServer {
 
     private int port;
-    private final ExpenseService expenseService;
+    private final TransactionService transactionService;
     private HttpServer server;
 
-    public ExpenseHttpServer(int port, ExpenseService expenseService) {
+    public ExpenseHttpServer(int port, TransactionService transactionService) {
         this.port = port;
-        this.expenseService = expenseService;
+        this.transactionService = transactionService;
     }
 
     public int getPort() {
@@ -78,23 +79,23 @@ public class ExpenseHttpServer {
 
         server.setExecutor(Executors.newFixedThreadPool(12));
 
-        // REST API Contexts
-        server.createContext("/api/expenses", new ExpensesHandler());
-        server.createContext("/api/summary", new SummaryHandler());
-        server.createContext("/api/budgets", new BudgetsHandler());
+        // REST API Handlers
+        server.createContext("/api/transactions", new TransactionsHandler());
+        server.createContext("/api/dashboard", new DashboardHandler());
+        server.createContext("/api/categories", new CategoriesHandler());
+        server.createContext("/api/reports", new ReportsHandler());
+        server.createContext("/api/budget", new BudgetHandler());
         server.createContext("/api/export", new ExportHandler());
-        server.createContext("/api/demo", new DemoHandler());
         server.createContext("/api/status", new StatusHandler());
-        server.createContext("/api/meta", new MetaHandler());
 
-        // Static Web UI Assets Context
+        // Static Web UI Assets Handler
         server.createContext("/", new StaticFileHandler());
 
         server.start();
         System.out.println("==========================================================");
-        System.out.println("  Personal Expense Tracker HTTP Server is RUNNING!        ");
+        System.out.println("  Personal Income & Expense Tracker Server is RUNNING!    ");
         System.out.println("  Access URL:  http://localhost:" + port + "/");
-        System.out.println("  Storage:     " + expenseService.getStorageType());
+        System.out.println("  Storage:     " + transactionService.getStorageType());
         System.out.println("==========================================================");
     }
 
@@ -105,10 +106,10 @@ public class ExpenseHttpServer {
     }
 
     // =========================================================================
-    //  REST HANDLER: /api/expenses and /api/expenses/{id}
+    //  REST: /api/transactions and /api/transactions/{id}
     // =========================================================================
 
-    private class ExpensesHandler implements HttpHandler {
+    private class TransactionsHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
             addCorsHeaders(exchange);
@@ -120,152 +121,143 @@ public class ExpenseHttpServer {
             }
 
             String path = exchange.getRequestURI().getPath();
-            // Path could be "/api/expenses" or "/api/expenses/123"
-            String subPath = path.substring("/api/expenses".length());
+            String subPath = path.substring("/api/transactions".length());
             if (subPath.startsWith("/")) {
                 subPath = subPath.substring(1);
             }
 
             try {
                 if (subPath.isEmpty()) {
-                    // Route: /api/expenses
+                    // /api/transactions
                     if ("GET".equals(method)) {
-                        handleListExpenses(exchange);
+                        handleListTransactions(exchange);
                     } else if ("POST".equals(method)) {
-                        handleCreateExpense(exchange);
+                        handleCreateTransaction(exchange);
                     } else {
                         sendError(exchange, 405, "Method Not Allowed: " + method);
                     }
                 } else {
-                    // Route: /api/expenses/{id}
+                    // /api/transactions/{id}
                     int id;
                     try {
                         id = Integer.parseInt(subPath);
                     } catch (NumberFormatException e) {
-                        sendError(exchange, 400, "Invalid expense ID: " + subPath);
+                        sendError(exchange, 400, "Invalid transaction ID format: " + subPath);
                         return;
                     }
 
                     if ("GET".equals(method)) {
-                        handleGetExpense(exchange, id);
+                        handleGetTransaction(exchange, id);
                     } else if ("PUT".equals(method)) {
-                        handleUpdateExpense(exchange, id);
+                        handleUpdateTransaction(exchange, id);
                     } else if ("DELETE".equals(method)) {
-                        handleDeleteExpense(exchange, id);
+                        handleDeleteTransaction(exchange, id);
                     } else {
                         sendError(exchange, 405, "Method Not Allowed: " + method);
                     }
                 }
-            } catch (ExpenseNotFoundException e) {
+            } catch (TransactionNotFoundException e) {
                 sendError(exchange, 404, e.getMessage());
-            } catch (InvalidExpenseException e) {
+            } catch (InvalidAmountException | InvalidTransactionException e) {
                 sendError(exchange, 400, e.getMessage());
+            } catch (DatabaseOperationException e) {
+                sendError(exchange, 500, e.getMessage());
             } catch (Exception e) {
-                e.printStackTrace();
-                sendError(exchange, 500, "Internal Server Error: " + e.getMessage());
+                sendError(exchange, 500, "An unexpected error occurred: " + e.getMessage());
             }
         }
 
-        private void handleListExpenses(HttpExchange exchange) throws Exception {
-            Map<String, String> queryParams = parseQueryParams(exchange.getRequestURI().getRawQuery());
+        private void handleListTransactions(HttpExchange exchange) throws Exception {
+            Map<String, String> params = parseQueryParams(exchange.getRequestURI().getRawQuery());
 
-            String search = queryParams.get("search");
-            String catStr = queryParams.get("category");
-            String pmStr = queryParams.get("paymentMethod");
-            String startStr = queryParams.get("startDate");
-            String endStr = queryParams.get("endDate");
-            String minStr = queryParams.get("minAmount");
-            String maxStr = queryParams.get("maxAmount");
-            String sortBy = queryParams.getOrDefault("sortBy", "date");
-            String sortOrder = queryParams.getOrDefault("sortOrder", "desc");
-            String algoStr = queryParams.getOrDefault("algo", "TIM_SORT");
+            String typeStr = params.get("type");
+            String catStr = params.get("category");
+            String startStr = params.get("startDate");
+            String endStr = params.get("endDate");
+            String search = params.get("search");
+            String sort = params.get("sort");
 
-            Category category = (catStr != null && !catStr.isEmpty() && !"ALL".equalsIgnoreCase(catStr))
-                    ? Category.fromString(catStr) : null;
-            PaymentMethod pm = (pmStr != null && !pmStr.isEmpty() && !"ALL".equalsIgnoreCase(pmStr))
-                    ? PaymentMethod.fromString(pmStr) : null;
-            LocalDate start = (startStr != null && !startStr.isEmpty()) ? DateTimeUtil.parseDate(startStr) : null;
-            LocalDate end = (endStr != null && !endStr.isEmpty()) ? DateTimeUtil.parseDate(endStr) : null;
-            Double min = (minStr != null && !minStr.isEmpty()) ? Double.parseDouble(minStr) : null;
-            Double max = (maxStr != null && !maxStr.isEmpty()) ? Double.parseDouble(maxStr) : null;
+            TransactionType type = (typeStr != null && !typeStr.isEmpty() && !"ALL".equalsIgnoreCase(typeStr))
+                    ? TransactionType.fromString(typeStr) : null;
 
-            ExpenseSorter.Algorithm algo;
-            try {
-                algo = ExpenseSorter.Algorithm.valueOf(algoStr.toUpperCase());
-            } catch (Exception e) {
-                algo = ExpenseSorter.Algorithm.TIM_SORT;
+            Integer categoryId = null;
+            if (catStr != null && !catStr.isEmpty() && !"ALL".equalsIgnoreCase(catStr)) {
+                try {
+                    categoryId = Integer.parseInt(catStr);
+                } catch (NumberFormatException e) {
+                    // Might be category name
+                    for (Category c : transactionService.getAllCategories()) {
+                        if (c.getCategoryName().equalsIgnoreCase(catStr.trim())) {
+                            categoryId = c.getCategoryId();
+                            break;
+                        }
+                    }
+                }
             }
 
-            List<Expense> expenses = expenseService.getFilteredAndSortedExpenses(
-                    search, category, pm, start, end, min, max, sortBy, sortOrder, algo
+            LocalDate start = (startStr != null && !startStr.isEmpty()) ? DateTimeUtil.parseDate(startStr) : null;
+            LocalDate end = (endStr != null && !endStr.isEmpty()) ? DateTimeUtil.parseDate(endStr) : null;
+
+            List<Transaction> transactions = transactionService.getFilteredTransactions(
+                    type, categoryId, start, end, search, sort
             );
 
             Map<String, Object> resp = new LinkedHashMap<>();
             resp.put("success", true);
-            resp.put("count", expenses.size());
-            resp.put("algorithmUsed", algo.name());
-            resp.put("expenses", expenses);
+            resp.put("count", transactions.size());
+            resp.put("transactions", transactions);
 
             sendJson(exchange, 200, SimpleJson.toJson(resp));
         }
 
-        private void handleGetExpense(HttpExchange exchange, int id) throws Exception {
-            Expense expense = expenseService.getExpenseById(id);
+        private void handleGetTransaction(HttpExchange exchange, int id) throws Exception {
+            Transaction tx = transactionService.getTransactionById(id);
             Map<String, Object> resp = new LinkedHashMap<>();
             resp.put("success", true);
-            resp.put("expense", expense);
+            resp.put("transaction", tx);
             sendJson(exchange, 200, SimpleJson.toJson(resp));
         }
 
-        private void handleCreateExpense(HttpExchange exchange) throws Exception {
+        private void handleCreateTransaction(HttpExchange exchange) throws Exception {
             String body = readRequestBody(exchange);
-            Expense expense = SimpleJson.parseExpense(body);
-            Expense created = expenseService.createExpense(expense);
-
-            Budget alertBudget = expenseService.checkBudgetAlert(created);
+            Transaction tx = SimpleJson.parseTransaction(body);
+            Transaction created = transactionService.addTransaction(tx);
 
             Map<String, Object> resp = new LinkedHashMap<>();
             resp.put("success", true);
-            resp.put("message", "Expense created successfully!");
-            resp.put("expense", created);
-            if (alertBudget != null) {
-                resp.put("budgetExceeded", true);
-                resp.put("budgetWarning", String.format("Warning: Budget for %s is exceeded by $%.2f!",
-                        alertBudget.getCategory().getDisplayName(), alertBudget.getSpent() - alertBudget.getMonthlyLimit()));
-            } else {
-                resp.put("budgetExceeded", false);
-            }
+            resp.put("message", "Transaction created successfully.");
+            resp.put("transaction", created);
 
             sendJson(exchange, 201, SimpleJson.toJson(resp));
         }
 
-        private void handleUpdateExpense(HttpExchange exchange, int id) throws Exception {
+        private void handleUpdateTransaction(HttpExchange exchange, int id) throws Exception {
             String body = readRequestBody(exchange);
-            Expense updatedData = SimpleJson.parseExpense(body);
-            Expense updated = expenseService.updateExpense(id, updatedData);
+            Transaction tx = SimpleJson.parseTransaction(body);
+            Transaction updated = transactionService.updateTransaction(id, tx);
 
             Map<String, Object> resp = new LinkedHashMap<>();
             resp.put("success", true);
-            resp.put("message", "Expense #" + id + " updated successfully!");
-            resp.put("expense", updated);
+            resp.put("message", "Transaction #" + id + " updated successfully.");
+            resp.put("transaction", updated);
 
             sendJson(exchange, 200, SimpleJson.toJson(resp));
         }
 
-        private void handleDeleteExpense(HttpExchange exchange, int id) throws Exception {
-            expenseService.deleteExpense(id);
+        private void handleDeleteTransaction(HttpExchange exchange, int id) throws Exception {
+            transactionService.deleteTransaction(id);
             Map<String, Object> resp = new LinkedHashMap<>();
             resp.put("success", true);
-            resp.put("message", "Expense #" + id + " deleted successfully!");
+            resp.put("message", "Transaction #" + id + " deleted successfully.");
             sendJson(exchange, 200, SimpleJson.toJson(resp));
         }
     }
 
     // =========================================================================
-    //  REST HANDLER: /api/summary
+    //  REST: /api/dashboard
     // =========================================================================
 
-    private class SummaryHandler implements HttpHandler {
+    private class DashboardHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
             addCorsHeaders(exchange);
@@ -274,22 +266,116 @@ public class ExpenseHttpServer {
                 return;
             }
             try {
-                ExpenseSummary summary = expenseService.getSummary();
-                Map<String, Object> resp = new LinkedHashMap<>();
-                resp.put("success", true);
-                resp.put("summary", summary);
-                sendJson(exchange, 200, SimpleJson.toJson(resp));
-            } catch (Exception e) {
+                LocalDate now = LocalDate.now();
+                DashboardSummary ds = transactionService.getDashboardSummary(now.getMonthValue(), now.getYear());
+                sendJson(exchange, 200, SimpleJson.toJson(ds));
+            } catch (DatabaseOperationException e) {
                 sendError(exchange, 500, e.getMessage());
+            } catch (Exception e) {
+                sendError(exchange, 500, "Failed to load dashboard: " + e.getMessage());
             }
         }
     }
 
     // =========================================================================
-    //  REST HANDLER: /api/budgets
+    //  REST: /api/categories
     // =========================================================================
 
-    private class BudgetsHandler implements HttpHandler {
+    private class CategoriesHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            addCorsHeaders(exchange);
+            if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
+                exchange.sendResponseHeaders(204, -1);
+                return;
+            }
+            try {
+                Map<String, String> params = parseQueryParams(exchange.getRequestURI().getRawQuery());
+                String typeStr = params.get("type");
+                TransactionType type = (typeStr != null && !typeStr.isEmpty() && !"ALL".equalsIgnoreCase(typeStr))
+                        ? TransactionType.fromString(typeStr) : null;
+
+                List<Category> categories = transactionService.getCategoriesByType(type);
+
+                Map<String, Object> resp = new LinkedHashMap<>();
+                resp.put("success", true);
+                resp.put("count", categories.size());
+                resp.put("categories", categories);
+
+                sendJson(exchange, 200, SimpleJson.toJson(resp));
+            } catch (DatabaseOperationException e) {
+                sendError(exchange, 500, e.getMessage());
+            } catch (Exception e) {
+                sendError(exchange, 500, "Failed to load categories: " + e.getMessage());
+            }
+        }
+    }
+
+    // =========================================================================
+    //  REST: /api/reports (monthly, categories, top-expenses)
+    // =========================================================================
+
+    private class ReportsHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            addCorsHeaders(exchange);
+            if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
+                exchange.sendResponseHeaders(204, -1);
+                return;
+            }
+
+            String path = exchange.getRequestURI().getPath();
+            Map<String, String> params = parseQueryParams(exchange.getRequestURI().getRawQuery());
+
+            LocalDate now = LocalDate.now();
+            int month = now.getMonthValue();
+            int year = now.getYear();
+
+            if (params.containsKey("month")) {
+                try { month = Integer.parseInt(params.get("month")); } catch (NumberFormatException ignored) {}
+            }
+            if (params.containsKey("year")) {
+                try { year = Integer.parseInt(params.get("year")); } catch (NumberFormatException ignored) {}
+            }
+
+            try {
+                if (path.endsWith("/monthly")) {
+                    MonthlySummary ms = transactionService.getMonthlySummary(month, year);
+                    sendJson(exchange, 200, SimpleJson.toJson(ms));
+                } else if (path.endsWith("/categories")) {
+                    List<CategorySummary> catReports = transactionService.getCategoryExpenseReport(month, year);
+                    Map<String, Object> resp = new LinkedHashMap<>();
+                    resp.put("success", true);
+                    resp.put("month", month);
+                    resp.put("year", year);
+                    resp.put("categories", catReports);
+                    sendJson(exchange, 200, SimpleJson.toJson(resp));
+                } else if (path.endsWith("/top-expenses")) {
+                    int limit = 5;
+                    if (params.containsKey("limit")) {
+                        try { limit = Integer.parseInt(params.get("limit")); } catch (NumberFormatException ignored) {}
+                    }
+                    List<Transaction> top = transactionService.getTopExpenses(limit);
+                    Map<String, Object> resp = new LinkedHashMap<>();
+                    resp.put("success", true);
+                    resp.put("topExpenses", top);
+                    sendJson(exchange, 200, SimpleJson.toJson(resp));
+                } else {
+                    sendError(exchange, 404, "Report endpoint not found.");
+                }
+            } catch (DatabaseOperationException e) {
+                sendError(exchange, 500, e.getMessage());
+            } catch (Exception e) {
+                sendError(exchange, 500, "Report error: " + e.getMessage());
+            }
+        }
+    }
+
+    // =========================================================================
+    //  REST: /api/budget
+    // =========================================================================
+
+    private class BudgetHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
             addCorsHeaders(exchange);
@@ -299,58 +385,46 @@ public class ExpenseHttpServer {
                 return;
             }
 
-            String path = exchange.getRequestURI().getPath();
-            String subPath = path.substring("/api/budgets".length());
-            if (subPath.startsWith("/")) {
-                subPath = subPath.substring(1);
+            LocalDate now = LocalDate.now();
+            Map<String, String> params = parseQueryParams(exchange.getRequestURI().getRawQuery());
+            int month = now.getMonthValue();
+            int year = now.getYear();
+            if (params.containsKey("month")) {
+                try { month = Integer.parseInt(params.get("month")); } catch (NumberFormatException ignored) {}
+            }
+            if (params.containsKey("year")) {
+                try { year = Integer.parseInt(params.get("year")); } catch (NumberFormatException ignored) {}
             }
 
             try {
-                if (subPath.isEmpty()) {
-                    if ("GET".equals(method)) {
-                        Map<String, String> params = parseQueryParams(exchange.getRequestURI().getRawQuery());
-                        String monthYear = params.getOrDefault("monthYear", DateTimeUtil.getCurrentMonthYear());
-                        List<Budget> budgets = expenseService.getBudgetsWithSpending(monthYear);
+                if ("GET".equals(method)) {
+                    Budget b = transactionService.getBudget(month, year);
+                    sendJson(exchange, 200, SimpleJson.toJson(b));
+                } else if ("POST".equals(method) || "PUT".equals(method)) {
+                    String body = readRequestBody(exchange);
+                    Budget b = SimpleJson.parseBudget(body);
+                    transactionService.saveBudget(b);
 
-                        Map<String, Object> resp = new LinkedHashMap<>();
-                        resp.put("success", true);
-                        resp.put("monthYear", monthYear);
-                        resp.put("budgets", budgets);
-                        sendJson(exchange, 200, SimpleJson.toJson(resp));
-                    } else if ("POST".equals(method)) {
-                        String body = readRequestBody(exchange);
-                        Budget budget = SimpleJson.parseBudget(body);
-                        expenseService.saveBudget(budget);
-
-                        Map<String, Object> resp = new LinkedHashMap<>();
-                        resp.put("success", true);
-                        resp.put("message", "Budget saved successfully!");
-                        sendJson(exchange, 200, SimpleJson.toJson(resp));
-                    } else {
-                        sendError(exchange, 405, "Method Not Allowed");
-                    }
+                    Map<String, Object> resp = new LinkedHashMap<>();
+                    resp.put("success", true);
+                    resp.put("message", "Monthly budget updated successfully.");
+                    resp.put("budget", b);
+                    sendJson(exchange, 200, SimpleJson.toJson(resp));
                 } else {
-                    int id = Integer.parseInt(subPath);
-                    if ("DELETE".equals(method)) {
-                        expenseService.deleteBudget(id);
-                        Map<String, Object> resp = new LinkedHashMap<>();
-                        resp.put("success", true);
-                        resp.put("message", "Budget deleted successfully!");
-                        sendJson(exchange, 200, SimpleJson.toJson(resp));
-                    } else {
-                        sendError(exchange, 405, "Method Not Allowed");
-                    }
+                    sendError(exchange, 405, "Method Not Allowed");
                 }
-            } catch (InvalidExpenseException e) {
+            } catch (InvalidAmountException e) {
                 sendError(exchange, 400, e.getMessage());
-            } catch (Exception e) {
+            } catch (DatabaseOperationException e) {
                 sendError(exchange, 500, e.getMessage());
+            } catch (Exception e) {
+                sendError(exchange, 500, "Budget error: " + e.getMessage());
             }
         }
     }
 
     // =========================================================================
-    //  REST HANDLER: /api/export
+    //  REST: /api/export
     // =========================================================================
 
     private class ExportHandler implements HttpHandler {
@@ -362,46 +436,22 @@ public class ExpenseHttpServer {
                 return;
             }
             try {
-                String csv = expenseService.generateCsvExport();
+                String csv = transactionService.generateCsvExport();
                 byte[] bytes = csv.getBytes(StandardCharsets.UTF_8);
                 exchange.getResponseHeaders().set("Content-Type", "text/csv; charset=UTF-8");
-                exchange.getResponseHeaders().set("Content-Disposition", "attachment; filename=\"expenses.csv\"");
+                exchange.getResponseHeaders().set("Content-Disposition", "attachment; filename=\"transactions.csv\"");
                 exchange.sendResponseHeaders(200, bytes.length);
                 try (OutputStream os = exchange.getResponseBody()) {
                     os.write(bytes);
                 }
             } catch (Exception e) {
-                sendError(exchange, 500, e.getMessage());
+                sendError(exchange, 500, "Export error: " + e.getMessage());
             }
         }
     }
 
     // =========================================================================
-    //  REST HANDLER: /api/demo
-    // =========================================================================
-
-    private class DemoHandler implements HttpHandler {
-        @Override
-        public void handle(HttpExchange exchange) throws IOException {
-            addCorsHeaders(exchange);
-            if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
-                exchange.sendResponseHeaders(204, -1);
-                return;
-            }
-            try {
-                expenseService.reloadDemoData();
-                Map<String, Object> resp = new LinkedHashMap<>();
-                resp.put("success", true);
-                resp.put("message", "Sample expense records loaded successfully!");
-                sendJson(exchange, 200, SimpleJson.toJson(resp));
-            } catch (Exception e) {
-                sendError(exchange, 500, e.getMessage());
-            }
-        }
-    }
-
-    // =========================================================================
-    //  REST HANDLER: /api/status
+    //  REST: /api/status
     // =========================================================================
 
     private class StatusHandler implements HttpHandler {
@@ -413,66 +463,25 @@ public class ExpenseHttpServer {
                 return;
             }
             try {
-                int count = expenseService.getAllExpenses().size();
-                Map<String, Object> status = new LinkedHashMap<>();
-                status.put("status", "UP");
-                status.put("storage", expenseService.getStorageType());
-                status.put("isDatabase", expenseService.isUsingDatabase());
-                status.put("totalExpenses", count);
-                status.put("javaVersion", System.getProperty("java.version"));
-                status.put("timestamp", DateTimeUtil.formatTimestamp(java.time.LocalDateTime.now()));
+                Map<String, Object> data = new LinkedHashMap<>();
+                data.put("status", "UP");
+                data.put("storage", transactionService.getStorageType());
+                data.put("databaseAvailable", transactionService.isDatabaseAvailable());
+                data.put("currency", "INR (₹)");
+                data.put("serverTime", DateTimeUtil.formatTimestamp(java.time.LocalDateTime.now()));
 
                 Map<String, Object> resp = new LinkedHashMap<>();
                 resp.put("success", true);
-                resp.put("data", status);
+                resp.put("data", data);
                 sendJson(exchange, 200, SimpleJson.toJson(resp));
             } catch (Exception e) {
-                sendError(exchange, 500, e.getMessage());
+                sendError(exchange, 500, "Status error: " + e.getMessage());
             }
         }
     }
 
     // =========================================================================
-    //  REST HANDLER: /api/meta (Categories & Payment Methods)
-    // =========================================================================
-
-    private class MetaHandler implements HttpHandler {
-        @Override
-        public void handle(HttpExchange exchange) throws IOException {
-            addCorsHeaders(exchange);
-            if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
-                exchange.sendResponseHeaders(204, -1);
-                return;
-            }
-            List<Map<String, String>> catList = new ArrayList<>();
-            for (Category c : Category.values()) {
-                Map<String, String> m = new HashMap<>();
-                m.put("code", c.name());
-                m.put("name", c.getDisplayName());
-                m.put("icon", c.getIcon());
-                catList.add(m);
-            }
-
-            List<Map<String, String>> pmList = new ArrayList<>();
-            for (PaymentMethod pm : PaymentMethod.values()) {
-                Map<String, String> m = new HashMap<>();
-                m.put("code", pm.name());
-                m.put("name", pm.getDisplayName());
-                m.put("icon", pm.getIcon());
-                pmList.add(m);
-            }
-
-            Map<String, Object> resp = new LinkedHashMap<>();
-            resp.put("success", true);
-            resp.put("categories", catList);
-            resp.put("paymentMethods", pmList);
-
-            sendJson(exchange, 200, SimpleJson.toJson(resp));
-        }
-    }
-
-    // =========================================================================
-    //  STATIC FILE HANDLER (web/index.html, web/style.css, web/app.js)
+    //  STATIC FILE SERVING (Same Origin: HTML, CSS, JS)
     // =========================================================================
 
     private class StaticFileHandler implements HttpHandler {
@@ -483,7 +492,6 @@ public class ExpenseHttpServer {
                 path = "/index.html";
             }
 
-            // Security check against directory traversal
             if (path.contains("..")) {
                 sendError(exchange, 403, "Access Denied");
                 return;
@@ -514,7 +522,6 @@ public class ExpenseHttpServer {
             if (path.endsWith(".css")) return "text/css; charset=UTF-8";
             if (path.endsWith(".js")) return "application/javascript; charset=UTF-8";
             if (path.endsWith(".json")) return "application/json; charset=UTF-8";
-            if (path.endsWith(".png")) return "image/png";
             if (path.endsWith(".svg")) return "image/svg+xml";
             if (path.endsWith(".ico")) return "image/x-icon";
             return "application/octet-stream";

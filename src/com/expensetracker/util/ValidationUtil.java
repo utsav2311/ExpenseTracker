@@ -1,14 +1,17 @@
 package com.expensetracker.util;
 
-import com.expensetracker.exception.InvalidExpenseException;
-import com.expensetracker.model.Expense;
+import com.expensetracker.exception.InvalidAmountException;
+import com.expensetracker.exception.InvalidTransactionException;
+import com.expensetracker.model.Category;
+import com.expensetracker.model.Transaction;
+import com.expensetracker.model.TransactionType;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Validates expense entities against domain business rules.
+ * Validates financial transactions against strict business domain rules.
  */
 public final class ValidationUtil {
 
@@ -16,47 +19,65 @@ public final class ValidationUtil {
     }
 
     /**
-     * Validates an expense and throws {@link InvalidExpenseException} if invalid.
+     * Validates a transaction object. Throws InvalidAmountException or InvalidTransactionException.
      */
-    public static void validateExpense(Expense expense) throws InvalidExpenseException {
-        if (expense == null) {
-            throw new InvalidExpenseException("Expense object cannot be null.");
+    public static void validateTransaction(Transaction tx, Category category)
+            throws InvalidAmountException, InvalidTransactionException {
+        if (tx == null) {
+            throw new InvalidTransactionException("Transaction data cannot be null.");
         }
 
         List<String> errors = new ArrayList<>();
 
-        if (expense.getTitle() == null || expense.getTitle().trim().isEmpty()) {
-            errors.add("Title is required and cannot be empty.");
-        } else if (expense.getTitle().trim().length() > 150) {
-            errors.add("Title cannot exceed 150 characters.");
+        // Validate Amount
+        if (tx.getAmount() <= 0.0) {
+            throw new InvalidAmountException(tx.getAmount(), "Amount must be strictly greater than zero.");
+        }
+        if (tx.getAmount() > 100_000_000.0) {
+            errors.add("Amount exceeds maximum allowed limit of ₹10,00,00,000.00.");
         }
 
-        if (expense.getAmount() <= 0.0) {
-            errors.add("Amount must be greater than zero.");
-        } else if (expense.getAmount() > 10_000_000.0) {
-            errors.add("Amount cannot exceed $10,000,000.00.");
+        // Validate Description
+        if (tx.getDescription() == null || tx.getDescription().trim().isEmpty()) {
+            errors.add("Description is required and cannot be empty.");
+        } else if (tx.getDescription().trim().length() > 150) {
+            errors.add("Description cannot exceed 150 characters.");
         }
 
-        if (expense.getCategory() == null) {
-            errors.add("Expense category is required.");
+        // Validate Transaction Type
+        if (tx.getTransactionType() == null) {
+            errors.add("Transaction type (INCOME or EXPENSE) is required.");
         }
 
-        if (expense.getPaymentMethod() == null) {
-            errors.add("Payment method is required.");
+        // Validate Category
+        if (tx.getCategoryId() <= 0 && category == null) {
+            errors.add("Valid category is required.");
         }
 
-        if (expense.getDate() == null) {
-            errors.add("Expense date is required.");
-        } else if (expense.getDate().isAfter(LocalDate.now().plusDays(30))) {
-            errors.add("Expense date cannot be more than 30 days in the future.");
+        // Validate Category Type Matches Transaction Type
+        if (category != null && tx.getTransactionType() != null) {
+            if (category.getCategoryType() != tx.getTransactionType()) {
+                errors.add(String.format("Category '%s' is an %s category, but transaction type is %s. " +
+                                "An %s transaction cannot use category '%s'.",
+                        category.getCategoryName(), category.getCategoryType(), tx.getTransactionType(),
+                        tx.getTransactionType(), category.getCategoryName()));
+            }
         }
 
-        if (expense.getNotes() != null && expense.getNotes().length() > 500) {
+        // Validate Date
+        if (tx.getTransactionDate() == null) {
+            errors.add("Transaction date is required.");
+        } else if (tx.getTransactionDate().isAfter(LocalDate.now().plusDays(365))) {
+            errors.add("Transaction date cannot be more than 1 year in the future.");
+        }
+
+        // Validate Notes length
+        if (tx.getNotes() != null && tx.getNotes().length() > 500) {
             errors.add("Notes cannot exceed 500 characters.");
         }
 
         if (!errors.isEmpty()) {
-            throw new InvalidExpenseException(errors);
+            throw new InvalidTransactionException(errors);
         }
     }
 }

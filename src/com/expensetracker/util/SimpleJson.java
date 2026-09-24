@@ -2,9 +2,11 @@ package com.expensetracker.util;
 
 import com.expensetracker.model.Budget;
 import com.expensetracker.model.Category;
-import com.expensetracker.model.Expense;
-import com.expensetracker.model.ExpenseSummary;
-import com.expensetracker.model.PaymentMethod;
+import com.expensetracker.model.CategorySummary;
+import com.expensetracker.model.DashboardSummary;
+import com.expensetracker.model.MonthlySummary;
+import com.expensetracker.model.Transaction;
+import com.expensetracker.model.TransactionType;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -14,11 +16,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Lightweight JSON parser and serializer in Core Java (Zero external dependencies).
- * Demonstrates:
- *  - String manipulation and tokenization
- *  - Recursive descent parsing for JSON Objects and Arrays
- *  - Dynamic type mapping to Maps, Lists, Strings, and Numbers
+ * Pure Core Java JSON parser and serializer with zero external dependencies.
+ * Implements recursive-descent tokenization and serialization for domain entities.
  */
 public final class SimpleJson {
 
@@ -45,20 +44,26 @@ public final class SimpleJson {
         if (obj instanceof LocalDateTime) {
             return "\"" + DateTimeUtil.formatTimestamp((LocalDateTime) obj) + "\"";
         }
+        if (obj instanceof Enum<?>) {
+            return "\"" + ((Enum<?>) obj).name() + "\"";
+        }
+        if (obj instanceof Transaction) {
+            return transactionToJson((Transaction) obj);
+        }
         if (obj instanceof Category) {
-            return "\"" + ((Category) obj).name() + "\"";
-        }
-        if (obj instanceof PaymentMethod) {
-            return "\"" + ((PaymentMethod) obj).name() + "\"";
-        }
-        if (obj instanceof Expense) {
-            return expenseToJson((Expense) obj);
+            return categoryToJson((Category) obj);
         }
         if (obj instanceof Budget) {
             return budgetToJson((Budget) obj);
         }
-        if (obj instanceof ExpenseSummary) {
-            return summaryToJson((ExpenseSummary) obj);
+        if (obj instanceof DashboardSummary) {
+            return dashboardSummaryToJson((DashboardSummary) obj);
+        }
+        if (obj instanceof MonthlySummary) {
+            return monthlySummaryToJson((MonthlySummary) obj);
+        }
+        if (obj instanceof CategorySummary) {
+            return categorySummaryToJson((CategorySummary) obj);
         }
         if (obj instanceof Map<?, ?>) {
             Map<?, ?> map = (Map<?, ?>) obj;
@@ -85,22 +90,40 @@ public final class SimpleJson {
         return "\"" + escape(obj.toString()) + "\"";
     }
 
-    public static String expenseToJson(Expense e) {
-        if (e == null) return "null";
+    public static String transactionToJson(Transaction t) {
+        if (t == null) return "null";
         StringBuilder sb = new StringBuilder("{");
-        sb.append("\"id\":").append(e.getId()).append(",");
-        sb.append("\"title\":").append(toJson(e.getTitle())).append(",");
-        sb.append("\"amount\":").append(String.format(java.util.Locale.US, "%.2f", e.getAmount())).append(",");
-        sb.append("\"category\":").append(toJson(e.getCategory().name())).append(",");
-        sb.append("\"categoryName\":").append(toJson(e.getCategory().getDisplayName())).append(",");
-        sb.append("\"categoryIcon\":").append(toJson(e.getCategory().getIcon())).append(",");
-        sb.append("\"paymentMethod\":").append(toJson(e.getPaymentMethod().name())).append(",");
-        sb.append("\"paymentMethodName\":").append(toJson(e.getPaymentMethod().getDisplayName())).append(",");
-        sb.append("\"paymentMethodIcon\":").append(toJson(e.getPaymentMethod().getIcon())).append(",");
-        sb.append("\"date\":").append(toJson(e.getDate())).append(",");
-        sb.append("\"displayDate\":").append(toJson(DateTimeUtil.formatDisplayDate(e.getDate()))).append(",");
-        sb.append("\"notes\":").append(toJson(e.getNotes())).append(",");
-        sb.append("\"createdAt\":").append(toJson(e.getCreatedAt()));
+        sb.append("\"transactionId\":").append(t.getTransactionId()).append(",");
+        sb.append("\"id\":").append(t.getTransactionId()).append(",");
+        sb.append("\"userId\":").append(t.getUserId()).append(",");
+        sb.append("\"categoryId\":").append(t.getCategoryId()).append(",");
+        sb.append("\"categoryName\":").append(toJson(t.getCategoryName())).append(",");
+        sb.append("\"categoryIcon\":").append(toJson(t.getCategoryIcon())).append(",");
+        sb.append("\"amount\":").append(String.format(java.util.Locale.US, "%.2f", t.getAmount())).append(",");
+        sb.append("\"transactionType\":").append(toJson(t.getTransactionType().name())).append(",");
+        sb.append("\"type\":").append(toJson(t.getTransactionType().name())).append(",");
+        sb.append("\"typeSign\":").append(toJson(t.getTransactionType().getSign())).append(",");
+        sb.append("\"description\":").append(toJson(t.getDescription())).append(",");
+        sb.append("\"notes\":").append(toJson(t.getNotes())).append(",");
+        sb.append("\"paymentMethod\":").append(toJson(t.getPaymentMethod())).append(",");
+        sb.append("\"transactionDate\":").append(toJson(t.getTransactionDate())).append(",");
+        sb.append("\"date\":").append(toJson(t.getTransactionDate())).append(",");
+        sb.append("\"displayDate\":").append(toJson(DateTimeUtil.formatDisplayDate(t.getTransactionDate()))).append(",");
+        sb.append("\"createdAt\":").append(toJson(t.getCreatedAt()));
+        sb.append("}");
+        return sb.toString();
+    }
+
+    public static String categoryToJson(Category c) {
+        if (c == null) return "null";
+        StringBuilder sb = new StringBuilder("{");
+        sb.append("\"categoryId\":").append(c.getCategoryId()).append(",");
+        sb.append("\"id\":").append(c.getCategoryId()).append(",");
+        sb.append("\"categoryName\":").append(toJson(c.getCategoryName())).append(",");
+        sb.append("\"name\":").append(toJson(c.getCategoryName())).append(",");
+        sb.append("\"categoryType\":").append(toJson(c.getCategoryType().name())).append(",");
+        sb.append("\"type\":").append(toJson(c.getCategoryType().name())).append(",");
+        sb.append("\"icon\":").append(toJson(c.getIcon()));
         sb.append("}");
         return sb.toString();
     }
@@ -108,78 +131,65 @@ public final class SimpleJson {
     public static String budgetToJson(Budget b) {
         if (b == null) return "null";
         StringBuilder sb = new StringBuilder("{");
-        sb.append("\"id\":").append(b.getId()).append(",");
-        sb.append("\"category\":").append(toJson(b.getCategory().name())).append(",");
-        sb.append("\"categoryName\":").append(toJson(b.getCategory().getDisplayName())).append(",");
-        sb.append("\"categoryIcon\":").append(toJson(b.getCategory().getIcon())).append(",");
-        sb.append("\"monthlyLimit\":").append(String.format(java.util.Locale.US, "%.2f", b.getMonthlyLimit())).append(",");
-        sb.append("\"monthYear\":").append(toJson(b.getMonthYear())).append(",");
+        sb.append("\"budgetId\":").append(b.getBudgetId()).append(",");
+        sb.append("\"userId\":").append(b.getUserId()).append(",");
+        sb.append("\"month\":").append(b.getMonth()).append(",");
+        sb.append("\"year\":").append(b.getYear()).append(",");
+        sb.append("\"budgetAmount\":").append(String.format(java.util.Locale.US, "%.2f", b.getBudgetAmount())).append(",");
         sb.append("\"spent\":").append(String.format(java.util.Locale.US, "%.2f", b.getSpent())).append(",");
         sb.append("\"remaining\":").append(String.format(java.util.Locale.US, "%.2f", b.getRemaining())).append(",");
         sb.append("\"percentageUsed\":").append(String.format(java.util.Locale.US, "%.1f", b.getPercentageUsed())).append(",");
-        sb.append("\"isExceeded\":").append(b.isExceeded());
+        sb.append("\"isExceeded\":").append(b.isExceeded()).append(",");
+        sb.append("\"exceededAmount\":").append(String.format(java.util.Locale.US, "%.2f", b.getExceededAmount()));
         sb.append("}");
         return sb.toString();
     }
 
-    public static String summaryToJson(ExpenseSummary s) {
-        if (s == null) return "null";
+    public static String dashboardSummaryToJson(DashboardSummary d) {
+        if (d == null) return "null";
         StringBuilder sb = new StringBuilder("{");
-        sb.append("\"totalExpenses\":").append(String.format(java.util.Locale.US, "%.2f", s.getTotalExpenses())).append(",");
-        sb.append("\"totalCount\":").append(s.getTotalCount()).append(",");
-        sb.append("\"averageExpense\":").append(String.format(java.util.Locale.US, "%.2f", s.getAverageExpense())).append(",");
-
-        sb.append("\"highestExpense\":").append(expenseToJson(s.getHighestExpense())).append(",");
-        sb.append("\"lowestExpense\":").append(expenseToJson(s.getLowestExpense())).append(",");
-
-        if (s.getTopCategory() != null) {
-            sb.append("\"topCategory\":").append(toJson(s.getTopCategory().name())).append(",");
-            sb.append("\"topCategoryName\":").append(toJson(s.getTopCategory().getDisplayName())).append(",");
-            sb.append("\"topCategoryIcon\":").append(toJson(s.getTopCategory().getIcon())).append(",");
-            sb.append("\"topCategoryAmount\":").append(String.format(java.util.Locale.US, "%.2f", s.getTopCategoryAmount())).append(",");
-        } else {
-            sb.append("\"topCategory\":null,");
-            sb.append("\"topCategoryName\":null,");
-            sb.append("\"topCategoryIcon\":null,");
-            sb.append("\"topCategoryAmount\":0.0,");
-        }
-
-        // Category breakdown
-        sb.append("\"categoryBreakdown\":{");
-        int i = 0;
-        for (Map.Entry<Category, Double> entry : s.getCategoryBreakdown().entrySet()) {
-            if (i++ > 0) sb.append(",");
-            sb.append("\"").append(entry.getKey().name()).append("\":").append(String.format(java.util.Locale.US, "%.2f", entry.getValue()));
-        }
-        sb.append("},");
-
-        // Category percentages
-        sb.append("\"categoryPercentages\":{");
-        i = 0;
-        for (Map.Entry<Category, Double> entry : s.getCategoryPercentages().entrySet()) {
-            if (i++ > 0) sb.append(",");
-            sb.append("\"").append(entry.getKey().name()).append("\":").append(String.format(java.util.Locale.US, "%.1f", entry.getValue()));
-        }
-        sb.append("},");
-
-        // Payment method breakdown
-        sb.append("\"paymentMethodBreakdown\":{");
-        i = 0;
-        for (Map.Entry<PaymentMethod, Double> entry : s.getPaymentMethodBreakdown().entrySet()) {
-            if (i++ > 0) sb.append(",");
-            sb.append("\"").append(entry.getKey().name()).append("\":").append(String.format(java.util.Locale.US, "%.2f", entry.getValue()));
-        }
-        sb.append("},");
-
-        // Monthly breakdown
-        sb.append("\"monthlyBreakdown\":{");
-        i = 0;
-        for (Map.Entry<String, Double> entry : s.getMonthlyBreakdown().entrySet()) {
-            if (i++ > 0) sb.append(",");
-            sb.append("\"").append(escape(entry.getKey())).append("\":").append(String.format(java.util.Locale.US, "%.2f", entry.getValue()));
-        }
+        sb.append("\"balance\":").append(String.format(java.util.Locale.US, "%.2f", d.getBalance())).append(",");
+        sb.append("\"totalIncome\":").append(String.format(java.util.Locale.US, "%.2f", d.getTotalIncome())).append(",");
+        sb.append("\"totalExpense\":").append(String.format(java.util.Locale.US, "%.2f", d.getTotalExpense())).append(",");
+        sb.append("\"monthlyBudget\":").append(String.format(java.util.Locale.US, "%.2f", d.getMonthlyBudget())).append(",");
+        sb.append("\"budgetRemaining\":").append(String.format(java.util.Locale.US, "%.2f", d.getBudgetRemaining())).append(",");
+        sb.append("\"budgetPercentage\":").append(String.format(java.util.Locale.US, "%.1f", d.getBudgetPercentage())).append(",");
+        sb.append("\"transactionCount\":").append(d.getTransactionCount()).append(",");
+        sb.append("\"recentTransactions\":").append(toJson(d.getRecentTransactions()));
         sb.append("}");
+        return sb.toString();
+    }
 
+    public static String monthlySummaryToJson(MonthlySummary m) {
+        if (m == null) return "null";
+        StringBuilder sb = new StringBuilder("{");
+        sb.append("\"month\":").append(m.getMonth()).append(",");
+        sb.append("\"year\":").append(m.getYear()).append(",");
+        sb.append("\"monthName\":").append(toJson(m.getMonthName())).append(",");
+        sb.append("\"income\":").append(String.format(java.util.Locale.US, "%.2f", m.getIncome())).append(",");
+        sb.append("\"expenses\":").append(String.format(java.util.Locale.US, "%.2f", m.getExpenses())).append(",");
+        sb.append("\"savings\":").append(String.format(java.util.Locale.US, "%.2f", m.getSavings())).append(",");
+        sb.append("\"transactionCount\":").append(m.getTransactionCount()).append(",");
+        sb.append("\"highestExpense\":").append(transactionToJson(m.getHighestExpense())).append(",");
+        sb.append("\"highestSpendingCategory\":").append(toJson(m.getHighestSpendingCategory())).append(",");
+        sb.append("\"highestSpendingCategoryAmount\":").append(String.format(java.util.Locale.US, "%.2f", m.getHighestSpendingCategoryAmount())).append(",");
+        sb.append("\"budgetAmount\":").append(String.format(java.util.Locale.US, "%.2f", m.getBudgetAmount())).append(",");
+        sb.append("\"remainingBudget\":").append(String.format(java.util.Locale.US, "%.2f", m.getRemainingBudget())).append(",");
+        sb.append("\"budgetPercentageUsed\":").append(String.format(java.util.Locale.US, "%.1f", m.getBudgetPercentageUsed()));
+        sb.append("}");
+        return sb.toString();
+    }
+
+    public static String categorySummaryToJson(CategorySummary cs) {
+        if (cs == null) return "null";
+        StringBuilder sb = new StringBuilder("{");
+        sb.append("\"categoryId\":").append(cs.getCategoryId()).append(",");
+        sb.append("\"categoryName\":").append(toJson(cs.getCategoryName())).append(",");
+        sb.append("\"categoryType\":").append(toJson(cs.getCategoryType().name())).append(",");
+        sb.append("\"totalAmount\":").append(String.format(java.util.Locale.US, "%.2f", cs.getTotalAmount())).append(",");
+        sb.append("\"transactionCount\":").append(cs.getTransactionCount()).append(",");
+        sb.append("\"percentage\":").append(String.format(java.util.Locale.US, "%.1f", cs.getPercentage())).append(",");
+        sb.append("\"icon\":").append(toJson(cs.getIcon()));
         sb.append("}");
         return sb.toString();
     }
@@ -208,7 +218,7 @@ public final class SimpleJson {
     }
 
     // =========================================================================
-    //  PARSING (JSON String -> Map / List / Object)
+    //  PARSING (JSON String -> Java Objects)
     // =========================================================================
 
     public static Object parse(String json) {
@@ -229,74 +239,118 @@ public final class SimpleJson {
     }
 
     /**
-     * Helper to deserialize JSON object into Expense entity.
+     * Parses incoming JSON payload into Transaction domain entity.
      */
-    public static Expense parseExpense(String json) {
+    public static Transaction parseTransaction(String json) {
         Map<String, Object> map = parseObject(json);
-        Expense expense = new Expense();
+        Transaction tx = new Transaction();
 
-        if (map.containsKey("id") && map.get("id") instanceof Number) {
-            expense.setId(((Number) map.get("id")).intValue());
+        if (map.containsKey("transactionId") && map.get("transactionId") instanceof Number) {
+            tx.setTransactionId(((Number) map.get("transactionId")).intValue());
+        } else if (map.containsKey("id") && map.get("id") instanceof Number) {
+            tx.setTransactionId(((Number) map.get("id")).intValue());
         }
-        if (map.containsKey("title") && map.get("title") != null) {
-            expense.setTitle(map.get("title").toString());
+
+        if (map.containsKey("userId") && map.get("userId") instanceof Number) {
+            tx.setUserId(((Number) map.get("userId")).intValue());
+        } else {
+            tx.setUserId(1);
         }
+
+        if (map.containsKey("categoryId") && map.get("categoryId") instanceof Number) {
+            tx.setCategoryId(((Number) map.get("categoryId")).intValue());
+        }
+
+        if (map.containsKey("description") && map.get("description") != null) {
+            tx.setDescription(map.get("description").toString());
+        } else if (map.containsKey("title") && map.get("title") != null) {
+            tx.setDescription(map.get("title").toString());
+        }
+
         if (map.containsKey("amount")) {
             Object amtObj = map.get("amount");
             if (amtObj instanceof Number) {
-                expense.setAmount(((Number) amtObj).doubleValue());
+                tx.setAmount(((Number) amtObj).doubleValue());
             } else if (amtObj != null) {
                 try {
-                    expense.setAmount(Double.parseDouble(amtObj.toString().trim()));
+                    tx.setAmount(Double.parseDouble(amtObj.toString().trim()));
                 } catch (NumberFormatException ignored) {}
             }
         }
-        if (map.containsKey("category") && map.get("category") != null) {
-            expense.setCategory(Category.fromString(map.get("category").toString()));
-        }
-        if (map.containsKey("paymentMethod") && map.get("paymentMethod") != null) {
-            expense.setPaymentMethod(PaymentMethod.fromString(map.get("paymentMethod").toString()));
-        }
-        if (map.containsKey("date") && map.get("date") != null) {
-            expense.setDate(DateTimeUtil.parseDate(map.get("date").toString()));
-        }
-        if (map.containsKey("notes") && map.get("notes") != null) {
-            expense.setNotes(map.get("notes").toString());
+
+        if (map.containsKey("transactionType") && map.get("transactionType") != null) {
+            tx.setTransactionType(TransactionType.fromString(map.get("transactionType").toString()));
+        } else if (map.containsKey("type") && map.get("type") != null) {
+            tx.setTransactionType(TransactionType.fromString(map.get("type").toString()));
         }
 
-        return expense;
+        if (map.containsKey("paymentMethod") && map.get("paymentMethod") != null) {
+            tx.setPaymentMethod(map.get("paymentMethod").toString());
+        }
+
+        if (map.containsKey("transactionDate") && map.get("transactionDate") != null) {
+            tx.setTransactionDate(DateTimeUtil.parseDate(map.get("transactionDate").toString()));
+        } else if (map.containsKey("date") && map.get("date") != null) {
+            tx.setTransactionDate(DateTimeUtil.parseDate(map.get("date").toString()));
+        }
+
+        if (map.containsKey("notes") && map.get("notes") != null) {
+            tx.setNotes(map.get("notes").toString());
+        }
+
+        return tx;
     }
 
     /**
-     * Helper to deserialize JSON object into Budget entity.
+     * Parses incoming JSON payload into Budget domain entity.
      */
     public static Budget parseBudget(String json) {
         Map<String, Object> map = parseObject(json);
-        Budget budget = new Budget();
+        Budget b = new Budget();
 
-        if (map.containsKey("id") && map.get("id") instanceof Number) {
-            budget.setId(((Number) map.get("id")).intValue());
+        if (map.containsKey("budgetId") && map.get("budgetId") instanceof Number) {
+            b.setBudgetId(((Number) map.get("budgetId")).intValue());
         }
-        if (map.containsKey("category") && map.get("category") != null) {
-            budget.setCategory(Category.fromString(map.get("category").toString()));
+        if (map.containsKey("userId") && map.get("userId") instanceof Number) {
+            b.setUserId(((Number) map.get("userId")).intValue());
+        } else {
+            b.setUserId(1);
         }
-        if (map.containsKey("monthlyLimit")) {
-            Object limitObj = map.get("monthlyLimit");
-            if (limitObj instanceof Number) {
-                budget.setMonthlyLimit(((Number) limitObj).doubleValue());
-            } else if (limitObj != null) {
+
+        LocalDate now = LocalDate.now();
+        if (map.containsKey("month") && map.get("month") instanceof Number) {
+            b.setMonth(((Number) map.get("month")).intValue());
+        } else {
+            b.setMonth(now.getMonthValue());
+        }
+
+        if (map.containsKey("year") && map.get("year") instanceof Number) {
+            b.setYear(((Number) map.get("year")).intValue());
+        } else {
+            b.setYear(now.getYear());
+        }
+
+        if (map.containsKey("budgetAmount")) {
+            Object amtObj = map.get("budgetAmount");
+            if (amtObj instanceof Number) {
+                b.setBudgetAmount(((Number) amtObj).doubleValue());
+            } else if (amtObj != null) {
                 try {
-                    budget.setMonthlyLimit(Double.parseDouble(limitObj.toString().trim()));
+                    b.setBudgetAmount(Double.parseDouble(amtObj.toString().trim()));
+                } catch (NumberFormatException ignored) {}
+            }
+        } else if (map.containsKey("amount")) {
+            Object amtObj = map.get("amount");
+            if (amtObj instanceof Number) {
+                b.setBudgetAmount(((Number) amtObj).doubleValue());
+            } else if (amtObj != null) {
+                try {
+                    b.setBudgetAmount(Double.parseDouble(amtObj.toString().trim()));
                 } catch (NumberFormatException ignored) {}
             }
         }
-        if (map.containsKey("monthYear") && map.get("monthYear") != null) {
-            budget.setMonthYear(map.get("monthYear").toString());
-        } else {
-            budget.setMonthYear(DateTimeUtil.getCurrentMonthYear());
-        }
 
-        return budget;
+        return b;
     }
 
     // =========================================================================

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ExpenseTracker | Core Java Full-Stack</title>
+    <title>Personal Income & Expense Tracker | Core Java Full-Stack</title>
     <link rel="stylesheet" href="style.css">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💰</text></svg>">
 </head>
@@ -15,8 +15,8 @@
             <div class="brand">
                 <span class="brand-icon">💰</span>
                 <div class="brand-text">
-                    <h1>ExpenseTracker</h1>
-                    <span class="brand-subtitle">Core Java &bull; JDBC &bull; REST API &bull; DSA</span>
+                    <h1>Income & Expense Tracker</h1>
+                    <span class="brand-subtitle">Core Java &bull; JDBC &bull; MySQL &bull; REST API &bull; Vanilla JS</span>
                 </div>
             </div>
 
@@ -25,95 +25,174 @@
                     <span class="status-dot"></span>
                     <span id="storageLabel">Connecting...</span>
                 </div>
-                <button id="btnReloadDemo" class="btn btn-secondary btn-sm" title="Reset sample records">
-                    <span>🔄 Demo Data</span>
+                <button id="btnOpenBudgetModal" class="btn btn-secondary btn-sm" title="Configure Monthly Budget">
+                    <span>⚙️ Budget</span>
                 </button>
-                <button id="btnExportCsv" class="btn btn-secondary btn-sm" title="Export expenses as CSV">
+                <button id="btnExportCsv" class="btn btn-secondary btn-sm" title="Export transactions as CSV">
                     <span>📥 Export CSV</span>
                 </button>
                 <button id="btnOpenAddModal" class="btn btn-primary btn-sm">
-                    <span>➕ Add Expense</span>
+                    <span>➕ Add Transaction</span>
                 </button>
             </div>
         </div>
     </header>
 
     <main class="main-content">
-        <!-- KPI Analytics Metric Cards -->
+        <!-- Global Error Banner (Shown if backend/database is offline) -->
+        <div id="backendErrorState" class="alert alert-danger hidden error-banner">
+            <div class="error-banner-content">
+                <span class="error-icon">⚠️</span>
+                <div>
+                    <strong>Unable to load financial data.</strong>
+                    <p class="text-sm">Please check that the Java server and MySQL database are running and configured properly.</p>
+                </div>
+            </div>
+            <button id="btnRetryConnection" class="btn btn-danger btn-sm">Try Again</button>
+        </div>
+
+        <!-- 4 Primary KPI Dashboard Cards -->
         <section class="metrics-grid">
-            <div class="metric-card">
+            <!-- Current Balance (Total Income - Total Expenses) -->
+            <div class="metric-card metric-card-balance">
                 <div class="metric-header">
-                    <span class="metric-title">Total Spending</span>
-                    <span class="metric-icon-box">💵</span>
+                    <span class="metric-title">Current Balance</span>
+                    <span class="metric-icon-box">💼</span>
                 </div>
-                <div class="metric-value" id="kpiTotalSpent">$0.00</div>
-                <div class="metric-footer" id="kpiTotalCount">0 total transactions</div>
+                <div class="metric-value" id="kpiBalance">₹0.00</div>
+                <div class="metric-footer" id="kpiBalanceSub">Total Income &minus; Total Expenses</div>
             </div>
 
-            <div class="metric-card">
+            <!-- Total Income -->
+            <div class="metric-card metric-card-income">
                 <div class="metric-header">
-                    <span class="metric-title">Average Expense</span>
-                    <span class="metric-icon-box">📊</span>
+                    <span class="metric-title">Total Income</span>
+                    <span class="metric-icon-box">📈</span>
                 </div>
-                <div class="metric-value" id="kpiAverage">$0.00</div>
-                <div class="metric-footer">Per transaction average</div>
+                <div class="metric-value text-income" id="kpiTotalIncome">+ ₹0.00</div>
+                <div class="metric-footer" id="kpiIncomeFooter">Cumulative earnings</div>
             </div>
 
-            <div class="metric-card">
+            <!-- Total Expenses -->
+            <div class="metric-card metric-card-expense">
                 <div class="metric-header">
-                    <span class="metric-title">Top Category</span>
-                    <span class="metric-icon-box" id="kpiTopCatIcon">🛍️</span>
+                    <span class="metric-title">Total Expenses</span>
+                    <span class="metric-icon-box">📉</span>
                 </div>
-                <div class="metric-value" id="kpiTopCatName">None</div>
-                <div class="metric-footer" id="kpiTopCatAmount">$0.00 spent</div>
+                <div class="metric-value text-expense" id="kpiTotalExpense">&minus; ₹0.00</div>
+                <div class="metric-footer" id="kpiExpenseFooter">Cumulative outflows</div>
             </div>
 
-            <div class="metric-card">
+            <!-- Monthly Budget -->
+            <div class="metric-card metric-card-budget">
                 <div class="metric-header">
-                    <span class="metric-title">Highest Single Expense</span>
-                    <span class="metric-icon-box">🏆</span>
+                    <span class="metric-title">Monthly Budget</span>
+                    <span class="metric-icon-box">🎯</span>
                 </div>
-                <div class="metric-value" id="kpiHighestAmount">$0.00</div>
-                <div class="metric-footer" id="kpiHighestTitle">No records</div>
+                <div class="metric-value" id="kpiMonthlyBudget">₹0.00</div>
+                <div class="metric-footer" id="kpiBudgetFooter">Expenses limit for current month</div>
             </div>
         </section>
 
-        <!-- Charts & Budget Row -->
-        <section class="insights-row">
-            <!-- Pure HTML5 Canvas Donut Chart for Category Breakdown -->
+        <!-- Monthly Financial Summary & Budget Section -->
+        <section class="card summary-panel">
+            <div class="card-header">
+                <div class="summary-title-group">
+                    <h3 id="monthlySummaryHeading">Monthly Financial Summary</h3>
+                    <span class="text-muted text-sm" id="monthlySummaryDateTag">Current Month</span>
+                </div>
+                <div class="summary-month-selector">
+                    <label for="summaryMonthPicker" class="text-xs text-muted">Select Month: </label>
+                    <input type="month" id="summaryMonthPicker">
+                </div>
+            </div>
+
+            <div class="monthly-stats-grid">
+                <div class="monthly-stat-item">
+                    <span class="stat-label">Month Income</span>
+                    <span class="stat-value text-income" id="monthIncomeVal">₹0.00</span>
+                </div>
+                <div class="monthly-stat-item">
+                    <span class="stat-label">Month Expenses</span>
+                    <span class="stat-value text-expense" id="monthExpenseVal">₹0.00</span>
+                </div>
+                <div class="monthly-stat-item">
+                    <span class="stat-label">Net Savings</span>
+                    <span class="stat-value" id="monthSavingsVal">₹0.00</span>
+                    <span class="text-xs text-muted">(Income &minus; Expenses)</span>
+                </div>
+                <div class="monthly-stat-item">
+                    <span class="stat-label">Transactions</span>
+                    <span class="stat-value" id="monthTxCountVal">0</span>
+                </div>
+                <div class="monthly-stat-item">
+                    <span class="stat-label">Highest Expense</span>
+                    <span class="stat-value text-sm" id="monthHighestExpenseVal">None</span>
+                </div>
+                <div class="monthly-stat-item">
+                    <span class="stat-label">Top Spending Category</span>
+                    <span class="stat-value text-sm" id="monthTopCategoryVal">None</span>
+                </div>
+            </div>
+
+            <!-- Monthly Budget Progress Bar -->
+            <div class="budget-tracker-box">
+                <div class="budget-tracker-header">
+                    <span class="font-medium">Monthly Expense Budget Progress:</span>
+                    <span id="budgetProgressLabel" class="text-sm font-semibold">₹0.00 spent of ₹0.00 (0%)</span>
+                </div>
+                <div class="budget-progress-track">
+                    <div id="budgetProgressBar" class="budget-progress-bar progress-normal" style="width: 0%;"></div>
+                </div>
+                <div id="budgetRemainingNote" class="budget-remaining-note text-xs text-muted">
+                    Remaining: ₹0.00
+                </div>
+            </div>
+        </section>
+
+        <!-- Insights Row: Category Breakdown Chart, Top Expenses, & Recent Transactions -->
+        <section class="insights-grid-3">
+            <!-- Expense Category Breakdown (Canvas Donut Chart) -->
             <div class="card insight-card">
                 <div class="card-header">
-                    <h3>Spending by Category</h3>
-                    <span class="text-muted text-sm">Visual Distribution</span>
+                    <h3>Expense by Category</h3>
+                    <span class="text-muted text-xs">SQL Breakdown</span>
                 </div>
                 <div class="chart-wrapper">
-                    <canvas id="categoryDonutChart" width="300" height="240"></canvas>
+                    <canvas id="categoryDonutChart" width="220" height="200"></canvas>
                     <div id="chartLegend" class="chart-legend"></div>
                 </div>
             </div>
 
-            <!-- Budget Progress Card -->
+            <!-- Top 5 Highest Expenses -->
             <div class="card insight-card">
                 <div class="card-header">
-                    <div>
-                        <h3>Monthly Category Budgets</h3>
-                        <span class="text-muted text-sm" id="budgetMonthLabel">Current Month</span>
-                    </div>
-                    <button id="btnOpenBudgetModal" class="btn btn-outline btn-sm">⚙️ Set Budget</button>
+                    <h3>Top 5 Expenses</h3>
+                    <span class="text-muted text-xs">Largest Outflows</span>
                 </div>
-                <div id="budgetsListContainer" class="budgets-container">
-                    <!-- Populated dynamically by app.js -->
-                    <p class="text-muted text-center py-4">Loading budget allocations...</p>
+                <div id="topExpensesList" class="ranked-list">
+                    <p class="text-muted text-center py-4 text-sm">Loading top expenses...</p>
+                </div>
+            </div>
+
+            <!-- Recent 5 Transactions -->
+            <div class="card insight-card">
+                <div class="card-header">
+                    <h3>Recent Transactions</h3>
+                    <span class="text-muted text-xs">Latest Activity</span>
+                </div>
+                <div id="recentTransactionsList" class="recent-list">
+                    <p class="text-muted text-center py-4 text-sm">Loading recent activity...</p>
                 </div>
             </div>
         </section>
 
-        <!-- Filter & Search Toolbar (Demonstrating DSA Features) -->
+        <!-- Filter, Search & Transactions Section -->
         <section class="card filter-card">
             <div class="filter-header">
                 <div class="filter-title-group">
-                    <h3>Transactions & DSA Filtering</h3>
-                    <span class="dsa-badge" id="algoIndicator">Algo: TimSort</span>
+                    <h3>All Transactions</h3>
+                    <span class="badge badge-secondary" id="tableRecordCountBadge">0 records</span>
                 </div>
                 <div class="filter-actions-top">
                     <button id="btnResetFilters" class="btn btn-ghost btn-sm">Reset Filters</button>
@@ -121,13 +200,23 @@
             </div>
 
             <div class="filter-controls-grid">
-                <!-- Search Input -->
+                <!-- Search Query -->
                 <div class="form-group search-group">
-                    <label for="filterSearch">Search Query</label>
+                    <label for="filterSearch">Search</label>
                     <div class="input-with-icon">
                         <span class="input-icon">🔍</span>
-                        <input type="text" id="filterSearch" placeholder="Search title, notes, payee...">
+                        <input type="text" id="filterSearch" placeholder="Search description, category, notes, method...">
                     </div>
+                </div>
+
+                <!-- Transaction Type Filter -->
+                <div class="form-group">
+                    <label for="filterType">Type</label>
+                    <select id="filterType">
+                        <option value="ALL">All Types</option>
+                        <option value="INCOME">Income Only</option>
+                        <option value="EXPENSE">Expense Only</option>
+                    </select>
                 </div>
 
                 <!-- Category Filter -->
@@ -138,86 +227,59 @@
                     </select>
                 </div>
 
-                <!-- Payment Method Filter -->
+                <!-- Date Range Filter -->
                 <div class="form-group">
-                    <label for="filterPaymentMethod">Payment Method</label>
-                    <select id="filterPaymentMethod">
-                        <option value="ALL">All Methods</option>
+                    <label for="filterDatePreset">Date Range</label>
+                    <select id="filterDatePreset">
+                        <option value="ALL">All Time</option>
+                        <option value="TODAY">Today</option>
+                        <option value="THIS_MONTH">This Month</option>
+                        <option value="LAST_MONTH">Last Month</option>
+                        <option value="CUSTOM">Custom Range</option>
                     </select>
                 </div>
 
-                <!-- Start Date -->
-                <div class="form-group">
-                    <label for="filterStartDate">Start Date</label>
+                <div class="form-group custom-date-group hidden" id="customDateStartWrapper">
+                    <label for="filterStartDate">From</label>
                     <input type="date" id="filterStartDate">
                 </div>
 
-                <!-- End Date -->
-                <div class="form-group">
-                    <label for="filterEndDate">End Date</label>
+                <div class="form-group custom-date-group hidden" id="customDateEndWrapper">
+                    <label for="filterEndDate">To</label>
                     <input type="date" id="filterEndDate">
                 </div>
 
                 <!-- Sort By -->
                 <div class="form-group">
-                    <label for="filterSortBy">Sort By</label>
-                    <select id="filterSortBy">
-                        <option value="date">Date</option>
-                        <option value="amount">Amount</option>
-                        <option value="title">Title</option>
-                        <option value="category">Category</option>
-                    </select>
-                </div>
-
-                <!-- Sort Order -->
-                <div class="form-group">
-                    <label for="filterSortOrder">Order</label>
-                    <select id="filterSortOrder">
-                        <option value="desc">Descending</option>
-                        <option value="asc">Ascending</option>
-                    </select>
-                </div>
-
-                <!-- DSA Algorithm Demonstration -->
-                <div class="form-group highlight-group">
-                    <label for="filterAlgo" title="Choose backend sorting algorithm to demonstrate DSA knowledge">
-                        DSA Algorithm ⚡
-                    </label>
-                    <select id="filterAlgo">
-                        <option value="TIM_SORT">Java TimSort (Collections.sort)</option>
-                        <option value="MERGE_SORT">MergeSort O(N log N) - Hand-Crafted</option>
-                        <option value="QUICK_SORT">QuickSort O(N log N) - Hand-Crafted</option>
+                    <label for="filterSort">Sort Order</label>
+                    <select id="filterSort">
+                        <option value="newest">Newest First</option>
+                        <option value="oldest">Oldest First</option>
+                        <option value="amount-desc">Highest Amount</option>
+                        <option value="amount-asc">Lowest Amount</option>
                     </select>
                 </div>
             </div>
         </section>
 
-        <!-- Expenses Table Card -->
+        <!-- Transactions Table Card -->
         <section class="card table-card">
-            <div class="card-header">
-                <div>
-                    <h3>Expense Records</h3>
-                    <span class="text-muted text-sm" id="tableRecordCount">Showing 0 records</span>
-                </div>
-                <div id="dsaBenchmarkTag" class="benchmark-tag">Backend Query: OK</div>
-            </div>
-
             <div class="table-responsive">
                 <table class="data-table">
                     <thead>
                         <tr>
-                            <th style="width: 70px;">ID</th>
-                            <th style="width: 130px;">Date</th>
-                            <th>Title & Description</th>
-                            <th style="width: 170px;">Category</th>
+                            <th style="width: 110px;">Date</th>
+                            <th>Description</th>
+                            <th style="width: 160px;">Category</th>
+                            <th style="width: 110px; text-align: center;">Type</th>
                             <th style="width: 150px;">Payment Method</th>
-                            <th style="width: 120px; text-align: right;">Amount</th>
-                            <th style="width: 120px; text-align: center;">Actions</th>
+                            <th style="width: 140px; text-align: right;">Amount (₹)</th>
+                            <th style="width: 110px; text-align: center;">Actions</th>
                         </tr>
                     </thead>
-                    <tbody id="expensesTableBody">
+                    <tbody id="transactionsTableBody">
                         <tr>
-                            <td colspan="7" class="text-center py-6 text-muted">Loading expense transactions...</td>
+                            <td colspan="7" class="text-center py-6 text-muted">Loading transactions...</td>
                         </tr>
                     </tbody>
                 </table>
@@ -226,9 +288,9 @@
             <!-- Empty State Display -->
             <div id="emptyState" class="empty-state hidden">
                 <div class="empty-icon">📂</div>
-                <h4>No Expenses Found</h4>
-                <p class="text-muted">No expenses match your search or filter criteria.</p>
-                <button class="btn btn-secondary btn-sm mt-3" onclick="resetFilters()">Clear Filters</button>
+                <h4>No transactions yet.</h4>
+                <p class="text-muted text-sm">Start tracking your finances by adding your first transaction.</p>
+                <button class="btn btn-primary btn-sm mt-3" onclick="openAddModal()">Add Transaction</button>
             </div>
         </section>
     </main>
@@ -236,36 +298,46 @@
     <!-- Footer -->
     <footer class="footer">
         <div class="footer-container">
-            <p><strong>Personal Expense Tracker</strong> &bull; Core Java Portfolio Project for Fresher Developers</p>
-            <p class="text-muted text-xs mt-1">Built with Java SE HttpServer, JDBC, MySQL, Java Collections & Pure Vanilla JS</p>
+            <p><strong>Personal Income &amp; Expense Tracker</strong> &bull; Core Java Portfolio Project</p>
+            <p class="text-muted text-xs mt-1">Built with Java SE HttpServer, JDBC, MySQL, Java Collections &amp; Pure Vanilla JS</p>
         </div>
     </footer>
 
     <!-- ================================================================= -->
-    <!--  MODAL: ADD / EDIT EXPENSE                                        -->
+    <!--  MODAL: ADD / EDIT TRANSACTION                                    -->
     <!-- ================================================================= -->
-    <div id="expenseModal" class="modal-backdrop hidden">
+    <div id="transactionModal" class="modal-backdrop hidden">
         <div class="modal-dialog">
             <div class="modal-header">
-                <h3 id="modalTitle">Add New Expense</h3>
+                <h3 id="modalTitle">Add Transaction</h3>
                 <button type="button" class="modal-close" id="btnModalClose">&times;</button>
             </div>
 
-            <form id="expenseForm">
-                <input type="hidden" id="expenseId" value="">
+            <form id="transactionForm">
+                <input type="hidden" id="txId" value="">
 
                 <div class="modal-body">
                     <div id="formErrorBanner" class="alert alert-danger hidden"></div>
 
+                    <!-- Type Selector (Income / Expense) -->
                     <div class="form-group">
-                        <label for="formTitle">Expense Title <span class="required">*</span></label>
-                        <input type="text" id="formTitle" placeholder="e.g. Weekly Grocery Shopping" required maxlength="150">
+                        <label>Transaction Type <span class="required">*</span></label>
+                        <div class="type-selector-tabs">
+                            <label class="type-tab-label">
+                                <input type="radio" name="formTxType" value="EXPENSE" checked id="typeRadioExpense">
+                                <span class="type-tab type-tab-expense">Expense</span>
+                            </label>
+                            <label class="type-tab-label">
+                                <input type="radio" name="formTxType" value="INCOME" id="typeRadioIncome">
+                                <span class="type-tab type-tab-income">Income</span>
+                            </label>
+                        </div>
                     </div>
 
                     <div class="form-row-2">
                         <div class="form-group">
-                            <label for="formAmount">Amount ($) <span class="required">*</span></label>
-                            <input type="number" id="formAmount" placeholder="0.00" step="0.01" min="0.01" max="10000000" required>
+                            <label for="formAmount">Amount (₹) <span class="required">*</span></label>
+                            <input type="number" id="formAmount" placeholder="0.00" step="0.01" min="0.01" max="100000000" required>
                         </div>
 
                         <div class="form-group">
@@ -274,39 +346,51 @@
                         </div>
                     </div>
 
-                    <div class="form-row-2">
-                        <div class="form-group">
-                            <label for="formCategory">Category <span class="required">*</span></label>
-                            <select id="formCategory" required></select>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="formPaymentMethod">Payment Method <span class="required">*</span></label>
-                            <select id="formPaymentMethod" required></select>
-                        </div>
+                    <div class="form-group">
+                        <label for="formCategory">Category <span class="required">*</span></label>
+                        <select id="formCategory" required>
+                            <!-- Dynamically populated based on Income/Expense selection -->
+                        </select>
+                        <span class="text-xs text-muted" id="categoryTypeHint">Showing expense categories</span>
                     </div>
 
                     <div class="form-group">
-                        <label for="formNotes">Notes / Description (Optional)</label>
-                        <textarea id="formNotes" rows="2" placeholder="Add extra details, payee, or invoice tags..." maxlength="500"></textarea>
+                        <label for="formDescription">Description <span class="required">*</span></label>
+                        <input type="text" id="formDescription" placeholder="e.g. Monthly Tech Salary / Whole Foods Groceries" required maxlength="150">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="formPaymentMethod">Payment Method <span class="required">*</span></label>
+                        <select id="formPaymentMethod" required>
+                            <option value="Cash">Cash</option>
+                            <option value="UPI" selected>UPI / Instant Transfer</option>
+                            <option value="Credit Card">Credit Card</option>
+                            <option value="Debit Card">Debit Card</option>
+                            <option value="Net Banking">Net Banking</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="formNotes">Notes (Optional)</label>
+                        <textarea id="formNotes" rows="2" placeholder="Additional details or reference notes..." maxlength="500"></textarea>
                     </div>
                 </div>
 
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" id="btnModalCancel">Cancel</button>
-                    <button type="submit" class="btn btn-primary" id="btnSaveExpense">Save Expense</button>
+                    <button type="submit" class="btn btn-primary" id="btnSaveTransaction">Save Transaction</button>
                 </div>
             </form>
         </div>
     </div>
 
     <!-- ================================================================= -->
-    <!--  MODAL: SET / EDIT BUDGET                                         -->
+    <!--  MODAL: CONFIGURE MONTHLY BUDGET                                  -->
     <!-- ================================================================= -->
     <div id="budgetModal" class="modal-backdrop hidden">
         <div class="modal-dialog modal-dialog-sm">
             <div class="modal-header">
-                <h3>Set Monthly Category Budget</h3>
+                <h3>Set Monthly Expense Budget</h3>
                 <button type="button" class="modal-close" id="btnBudgetModalClose">&times;</button>
             </div>
 
@@ -315,18 +399,14 @@
                     <div id="budgetErrorBanner" class="alert alert-danger hidden"></div>
 
                     <div class="form-group">
-                        <label for="budgetCategory">Category <span class="required">*</span></label>
-                        <select id="budgetCategory" required></select>
+                        <label for="budgetMonthInput">Target Month</label>
+                        <input type="month" id="budgetMonthInput" required>
                     </div>
 
                     <div class="form-group">
-                        <label for="budgetLimit">Monthly Limit ($) <span class="required">*</span></label>
-                        <input type="number" id="budgetLimit" placeholder="500.00" step="1.00" min="0" required>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="budgetMonth">Target Month</label>
-                        <input type="month" id="budgetMonth" required>
+                        <label for="budgetAmountInput">Monthly Expense Limit (₹) <span class="required">*</span></label>
+                        <input type="number" id="budgetAmountInput" placeholder="30000.00" step="100.00" min="0" required>
+                        <span class="text-xs text-muted">Budget applies strictly to monthly expenses.</span>
                     </div>
                 </div>
 
@@ -339,16 +419,20 @@
     </div>
 
     <!-- ================================================================= -->
-    <!--  MODAL: CONFIRM DELETE                                            -->
+    <!--  MODAL: CONFIRM DELETION                                          -->
     <!-- ================================================================= -->
     <div id="deleteModal" class="modal-backdrop hidden">
         <div class="modal-dialog modal-dialog-sm">
             <div class="modal-header">
-                <h3>Confirm Deletion</h3>
+                <h3>Delete Transaction?</h3>
                 <button type="button" class="modal-close" id="btnDeleteModalClose">&times;</button>
             </div>
             <div class="modal-body">
-                <p id="deleteModalMessage">Are you sure you want to permanently delete this expense?</p>
+                <p>Are you sure you want to permanently delete this transaction?</p>
+                <div class="delete-item-preview" id="deleteModalPreview">
+                    <!-- Populated dynamically -->
+                </div>
+                <p class="text-xs text-muted mt-2">This action cannot be undone.</p>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" id="btnCancelDelete">Cancel</button>

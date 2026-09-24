@@ -1,10 +1,10 @@
 -- ==============================================================================
--- Personal Expense Tracker Database Schema (MySQL)
+-- Personal Income & Expense Tracker Database Schema (MySQL)
 -- Demonstrates:
---  - Relational Schema Design (DDL)
---  - Integrity Constraints (Primary Key, Not Null, Unique, Check)
---  - Database Indexing for fast search and range queries
---  - Analytical SQL queries (GROUP BY, JOIN, Aggregations)
+--  - Relational Database Design with Primary & Foreign Key Constraints
+--  - Data Integrity (NOT NULL, UNIQUE, CHECK constraints)
+--  - Useful Indexing (Foreign keys, transaction date, transaction type)
+--  - SQL Aggregations, JOINs, and Analytical Reporting
 -- ==============================================================================
 
 -- 1. Create and switch to Database
@@ -14,94 +14,141 @@ CREATE DATABASE IF NOT EXISTS expense_tracker_db
 
 USE expense_tracker_db;
 
--- 2. Drop existing tables if re-initializing
+-- 2. Drop existing tables if re-initializing (Clean migration from legacy schema)
+DROP TABLE IF EXISTS transactions;
 DROP TABLE IF EXISTS budgets;
-DROP TABLE IF EXISTS expenses;
+DROP TABLE IF EXISTS categories;
+DROP TABLE IF EXISTS users;
+DROP TABLE IF EXISTS expenses; -- legacy table cleanup
 
--- 3. Create Expenses Table
-CREATE TABLE expenses (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    title VARCHAR(150) NOT NULL,
-    amount DECIMAL(10, 2) NOT NULL CHECK (amount > 0),
-    category VARCHAR(50) NOT NULL,
-    payment_method VARCHAR(50) NOT NULL,
-    expense_date DATE NOT NULL,
-    notes TEXT,
+-- 3. Create Users Table
+CREATE TABLE users (
+    user_id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    email VARCHAR(150) NOT NULL UNIQUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 4. Create Categories Table (Supports both INCOME and EXPENSE)
+CREATE TABLE categories (
+    category_id INT AUTO_INCREMENT PRIMARY KEY,
+    category_name VARCHAR(100) NOT NULL,
+    category_type ENUM('INCOME', 'EXPENSE') NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_cat_name_type (category_name, category_type)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 5. Create Transactions Table (Unified Income & Expense)
+CREATE TABLE transactions (
+    transaction_id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    category_id INT NOT NULL,
+    amount DECIMAL(10, 2) NOT NULL CHECK (amount > 0),
+    transaction_type ENUM('INCOME', 'EXPENSE') NOT NULL,
+    description VARCHAR(150) NOT NULL,
+    notes TEXT,
+    payment_method VARCHAR(50) NOT NULL,
+    transaction_date DATE NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    -- Foreign Key Constraints
+    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+    FOREIGN KEY (category_id) REFERENCES categories(category_id) ON DELETE RESTRICT,
 
     -- Performance Indexes
-    INDEX idx_expense_category (category),
-    INDEX idx_expense_date (expense_date),
-    INDEX idx_expense_amount (amount)
+    INDEX idx_user_tx (user_id),
+    INDEX idx_category_tx (category_id),
+    INDEX idx_tx_date (transaction_date),
+    INDEX idx_tx_type (transaction_type)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 4. Create Monthly Budgets Table
+-- 6. Create Monthly Budgets Table (Applies to Monthly Expenses)
 CREATE TABLE budgets (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    category VARCHAR(50) NOT NULL,
-    monthly_limit DECIMAL(10, 2) NOT NULL CHECK (monthly_limit >= 0),
-    month_year VARCHAR(7) NOT NULL COMMENT 'Format YYYY-MM',
+    budget_id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    month INT NOT NULL CHECK (month BETWEEN 1 AND 12),
+    year INT NOT NULL CHECK (year >= 2000),
+    budget_amount DECIMAL(10, 2) NOT NULL CHECK (budget_amount >= 0),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
-    -- Guarantee only one budget per category per month
-    UNIQUE KEY uk_cat_month (category, month_year)
+    UNIQUE KEY uk_user_month_year (user_id, month, year),
+    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 5. Seed Realistic Sample Expenses
-INSERT INTO expenses (title, amount, category, payment_method, expense_date, notes) VALUES
-('Supermarket Groceries', 142.50, 'FOOD', 'CREDIT_CARD', CURDATE() - INTERVAL 1 DAY, 'Weekly essentials: dairy, fruits, veggies'),
-('Apartment Rent', 1250.00, 'HOUSING', 'NET_BANKING', CURDATE() - INTERVAL 5 DAY, 'Monthly 1BHK apartment rent'),
-('Subway Metro Pass', 55.00, 'TRANSPORTATION', 'DEBIT_CARD', CURDATE() - INTERVAL 3 DAY, 'Monthly unlimited metro transit card'),
-('Electricity & Water Bill', 94.20, 'UTILITIES', 'UPI', CURDATE() - INTERVAL 4 DAY, 'Utility bills for current billing cycle'),
-('IMAX Movie Night', 38.50, 'ENTERTAINMENT', 'UPI', CURDATE() - INTERVAL 2 DAY, 'Sci-Fi premiere ticket and snacks'),
-('Health Checkup & Meds', 65.00, 'HEALTHCARE', 'CASH', CURDATE() - INTERVAL 6 DAY, 'Routine clinical consultation and medicines'),
-('Running Shoes', 89.99, 'SHOPPING', 'CREDIT_CARD', CURDATE() - INTERVAL 7 DAY, 'Sportswear shoes from retail outlet'),
-('Java Fullstack Course', 19.99, 'EDUCATION', 'CREDIT_CARD', CURDATE() - INTERVAL 8 DAY, 'Online technical certifications'),
-('Morning Latte & Pastry', 8.75, 'FOOD', 'UPI', CURDATE(), 'Breakfast at neighborhood cafe'),
-('Uber Airport Ride', 34.20, 'TRANSPORTATION', 'CREDIT_CARD', CURDATE() - INTERVAL 9 DAY, 'Airport terminal taxi pickup'),
-('High-Speed Internet Fiber', 49.99, 'UTILITIES', 'NET_BANKING', CURDATE() - INTERVAL 10 DAY, '300 Mbps broadband monthly subscription'),
-('Barber Haircut & Grooming', 25.00, 'PERSONAL', 'CASH', CURDATE() - INTERVAL 11 DAY, 'Haircut and grooming service'),
-('Desk Ergonomic Chair', 189.00, 'SHOPPING', 'CREDIT_CARD', CURDATE() - INTERVAL 12 DAY, 'Home office furniture upgrade'),
-('Dinner with Family', 112.40, 'FOOD', 'CREDIT_CARD', CURDATE() - INTERVAL 13 DAY, 'Italian bistro dinner');
+-- ==============================================================================
+-- INITIAL SEED DATA
+-- ==============================================================================
 
--- 6. Seed Sample Monthly Budgets (Current Month)
-INSERT INTO budgets (category, monthly_limit, month_year) VALUES
-('FOOD', 450.00, DATE_FORMAT(CURDATE(), '%Y-%m')),
-('HOUSING', 1300.00, DATE_FORMAT(CURDATE(), '%Y-%m')),
-('TRANSPORTATION', 150.00, DATE_FORMAT(CURDATE(), '%Y-%m')),
-('UTILITIES', 180.00, DATE_FORMAT(CURDATE(), '%Y-%m')),
-('ENTERTAINMENT', 100.00, DATE_FORMAT(CURDATE(), '%Y-%m')),
-('SHOPPING', 250.00, DATE_FORMAT(CURDATE(), '%Y-%m')),
-('HEALTHCARE', 120.00, DATE_FORMAT(CURDATE(), '%Y-%m'));
+-- Default User
+INSERT INTO users (user_id, name, email) VALUES
+(1, 'Utsav Kumar', 'utsav@example.com');
+
+-- Default Categories (Income)
+INSERT INTO categories (category_name, category_type) VALUES
+('Salary', 'INCOME'),
+('Freelance', 'INCOME'),
+('Bonus', 'INCOME'),
+('Investment', 'INCOME'),
+('Other Income', 'INCOME');
+
+-- Default Categories (Expense)
+INSERT INTO categories (category_name, category_type) VALUES
+('Food', 'EXPENSE'),
+('Travel', 'EXPENSE'),
+('Shopping', 'EXPENSE'),
+('Bills', 'EXPENSE'),
+('Entertainment', 'EXPENSE'),
+('Education', 'EXPENSE'),
+('Health', 'EXPENSE'),
+('Rent', 'EXPENSE'),
+('Other Expense', 'EXPENSE');
+
+-- Seed Sample Realistic Transactions (INR / ₹) for User 1
+-- Income: ₹50,000 + ₹15,000 = ₹65,000
+-- Expenses: ₹15,000 + ₹750 + ₹1,200 + ₹2,400 + ₹3,150 = ₹22,500
+-- Balance: ₹65,000 - ₹22,500 = ₹42,500
+INSERT INTO transactions (user_id, category_id, amount, transaction_type, description, notes, payment_method, transaction_date) VALUES
+(1, (SELECT category_id FROM categories WHERE category_name='Salary' AND category_type='INCOME'), 50000.00, 'INCOME', 'Monthly Tech Salary', 'Direct employer credit', 'Net Banking', CURDATE() - INTERVAL 5 DAY),
+(1, (SELECT category_id FROM categories WHERE category_name='Freelance' AND category_type='INCOME'), 15000.00, 'INCOME', 'Frontend Consulting Project', 'Milestone 1 payment', 'UPI', CURDATE() - INTERVAL 2 DAY),
+(1, (SELECT category_id FROM categories WHERE category_name='Rent' AND category_type='EXPENSE'), 15000.00, 'EXPENSE', 'Apartment Rent', 'Monthly residential rent', 'Net Banking', CURDATE() - INTERVAL 4 DAY),
+(1, (SELECT category_id FROM categories WHERE category_name='Food' AND category_type='EXPENSE'), 750.00, 'EXPENSE', 'Dinner with Friends', 'Weekend dining outing', 'UPI', CURDATE() - INTERVAL 1 DAY),
+(1, (SELECT category_id FROM categories WHERE category_name='Travel' AND category_type='EXPENSE'), 1200.00, 'EXPENSE', 'Metro & Cab Travel', 'Weekly office commute', 'Debit Card', CURDATE() - INTERVAL 3 DAY),
+(1, (SELECT category_id FROM categories WHERE category_name='Bills' AND category_type='EXPENSE'), 2400.00, 'EXPENSE', 'Electricity & Wi-Fi Bills', 'Utility payments', 'UPI', CURDATE() - INTERVAL 4 DAY),
+(1, (SELECT category_id FROM categories WHERE category_name='Shopping' AND category_type='EXPENSE'), 3150.00, 'EXPENSE', 'Clothing & Essentials', 'Weekend shopping mall', 'Credit Card', CURDATE() - INTERVAL 6 DAY);
+
+-- Seed Monthly Budget for User 1 (Current Month & Year): ₹30,000
+INSERT INTO budgets (user_id, month, year, budget_amount) VALUES
+(1, MONTH(CURDATE()), YEAR(CURDATE()), 30000.00);
 
 -- ==============================================================================
 -- ANALYTICAL QUERIES (Interview Demonstration)
 -- ==============================================================================
 
--- Q1: Total spending grouped by category with transaction count
--- SELECT category, COUNT(*) AS count, SUM(amount) AS total_spent, AVG(amount) AS avg_spent
--- FROM expenses
--- GROUP BY category
--- ORDER BY total_spent DESC;
-
--- Q2: Monthly spending trends
--- SELECT DATE_FORMAT(expense_date, '%Y-%m') AS month, SUM(amount) AS monthly_total
--- FROM expenses
--- GROUP BY DATE_FORMAT(expense_date, '%Y-%m')
--- ORDER BY month DESC;
-
--- Q3: Budget vs Actual Spending Comparison
+-- Q1: Current Balance (Total Income - Total Expenses)
 -- SELECT
---     b.category,
---     b.monthly_limit,
---     COALESCE(SUM(e.amount), 0.00) AS actual_spent,
---     (b.monthly_limit - COALESCE(SUM(e.amount), 0.00)) AS remaining_budget,
---     ROUND((COALESCE(SUM(e.amount), 0.00) / b.monthly_limit) * 100, 1) AS percent_used
--- FROM budgets b
--- LEFT JOIN expenses e
---     ON b.category = e.category
---     AND DATE_FORMAT(e.expense_date, '%Y-%m') = b.month_year
--- WHERE b.month_year = DATE_FORMAT(CURDATE(), '%Y-%m')
--- GROUP BY b.category, b.monthly_limit, b.month_year;
+--     COALESCE(SUM(CASE WHEN transaction_type = 'INCOME' THEN amount ELSE 0 END), 0.00) AS total_income,
+--     COALESCE(SUM(CASE WHEN transaction_type = 'EXPENSE' THEN amount ELSE 0 END), 0.00) AS total_expense,
+--     (COALESCE(SUM(CASE WHEN transaction_type = 'INCOME' THEN amount ELSE 0 END), 0.00) -
+--      COALESCE(SUM(CASE WHEN transaction_type = 'EXPENSE' THEN amount ELSE 0 END), 0.00)) AS current_balance
+-- FROM transactions
+-- WHERE user_id = 1;
+
+-- Q2: Expense Breakdown by Category with SQL JOIN
+-- SELECT
+--     c.category_id,
+--     c.category_name,
+--     SUM(t.amount) AS total_amount,
+--     COUNT(t.transaction_id) AS transaction_count
+-- FROM transactions t
+-- JOIN categories c ON t.category_id = c.category_id
+-- WHERE t.user_id = 1 AND t.transaction_type = 'EXPENSE'
+-- GROUP BY c.category_id, c.category_name
+-- ORDER BY total_amount DESC;
+
+-- Q3: Top 5 Highest Expenses
+-- SELECT t.transaction_id, t.description, t.amount, c.category_name, t.transaction_date
+-- FROM transactions t
+-- JOIN categories c ON t.category_id = c.category_id
+-- WHERE t.user_id = 1 AND t.transaction_type = 'EXPENSE'
+-- ORDER BY t.amount DESC
+-- LIMIT 5;

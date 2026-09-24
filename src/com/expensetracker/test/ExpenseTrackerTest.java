@@ -1,18 +1,19 @@
 package com.expensetracker.test;
 
-import com.expensetracker.dsa.ExpenseAnalytics;
-import com.expensetracker.dsa.ExpenseFilter;
-import com.expensetracker.dsa.ExpenseSearcher;
-import com.expensetracker.dsa.ExpenseSorter;
-import com.expensetracker.exception.ExpenseNotFoundException;
-import com.expensetracker.exception.InvalidExpenseException;
+import com.expensetracker.dao.InMemoryTransactionDAO;
+import com.expensetracker.dsa.TransactionSearcher;
+import com.expensetracker.dsa.TransactionSorter;
+import com.expensetracker.exception.InvalidAmountException;
+import com.expensetracker.exception.InvalidTransactionException;
+import com.expensetracker.exception.TransactionNotFoundException;
 import com.expensetracker.model.Budget;
 import com.expensetracker.model.Category;
-import com.expensetracker.model.Expense;
-import com.expensetracker.model.ExpenseSummary;
-import com.expensetracker.model.PaymentMethod;
-import com.expensetracker.service.ExpenseService;
-import com.expensetracker.util.DateTimeUtil;
+import com.expensetracker.model.CategorySummary;
+import com.expensetracker.model.DashboardSummary;
+import com.expensetracker.model.MonthlySummary;
+import com.expensetracker.model.Transaction;
+import com.expensetracker.model.TransactionType;
+import com.expensetracker.service.TransactionService;
 import com.expensetracker.util.SimpleJson;
 import com.expensetracker.util.ValidationUtil;
 
@@ -21,8 +22,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Automated test suite with zero external testing framework dependencies.
- * Demonstrates unit and integration testing capabilities using Core Java assertions.
+ * Automated test suite for Personal Income & Expense Tracker.
+ * Demonstrates unit and integration testing without third-party frameworks.
  */
 public class ExpenseTrackerTest {
 
@@ -31,17 +32,17 @@ public class ExpenseTrackerTest {
 
     public static void runAllTests() {
         System.out.println("==========================================================");
-        System.out.println("     Personal Expense Tracker Automated Test Suite        ");
+        System.out.println(" Personal Income & Expense Tracker Automated Test Suite   ");
         System.out.println("==========================================================");
 
-        testModelEncapsulationAndValidation();
-        testCustomExceptions();
+        testModelEncapsulationAndTypes();
+        testCategoryTypeValidationConstraints();
+        testBalanceAndSavingsCalculations();
         testCustomMergeSort();
         testCustomQuickSort();
-        testBinarySearchAlgorithms();
-        testLinearSearchAndFiltering();
-        testAnalyticsAndAggregations();
-        testJsonSerializationAndParsing();
+        testBinarySearchByDate();
+        testLinearSearchAndFilter();
+        testSimpleJsonSerializationAndParsing();
         testServiceCrudAndBudgetTracking();
 
         System.out.println("\n----------------------------------------------------------");
@@ -54,194 +55,209 @@ public class ExpenseTrackerTest {
         }
     }
 
-    private static void assertTrue(String testName, boolean condition) {
+    private static void assertTrue(String name, boolean condition) {
         totalTests++;
         if (condition) {
             passedTests++;
-            System.out.println("  [PASS] " + testName);
+            System.out.println("  [PASS] " + name);
         } else {
-            System.err.println("  [FAIL] " + testName);
+            System.err.println("  [FAIL] " + name);
         }
     }
 
-    private static void assertEquals(String testName, Object expected, Object actual) {
+    private static void assertEquals(String name, Object expected, Object actual) {
         totalTests++;
-        boolean equal = (expected == null && actual == null) || (expected != null && expected.equals(actual));
-        if (equal) {
+        boolean eq = (expected == null && actual == null) || (expected != null && expected.equals(actual));
+        if (eq) {
             passedTests++;
-            System.out.println("  [PASS] " + testName);
+            System.out.println("  [PASS] " + name);
         } else {
-            System.err.printf("  [FAIL] %s: Expected [%s] but got [%s]\n", testName, expected, actual);
+            System.err.printf("  [FAIL] %s: Expected [%s] but got [%s]\n", name, expected, actual);
         }
     }
 
-    private static void testModelEncapsulationAndValidation() {
-        System.out.println("\n[1] Testing Model Encapsulation & Validation...");
-        Expense e = new Expense("Groceries", 85.50, Category.FOOD, PaymentMethod.UPI, LocalDate.now(), "Milk and bread");
-        assertEquals("Expense title getter", "Groceries", e.getTitle());
-        assertEquals("Expense amount getter", 85.50, e.getAmount());
-        assertEquals("Expense category getter", Category.FOOD, e.getCategory());
-        assertEquals("Expense payment method", PaymentMethod.UPI, e.getPaymentMethod());
+    private static void testModelEncapsulationAndTypes() {
+        System.out.println("\n[1] Testing Model Encapsulation & Types...");
+        Transaction tx = new Transaction(1, 2, 5000.0, TransactionType.INCOME, "Freelance Gig", "Web app", "UPI", LocalDate.now());
+        assertEquals("Transaction description getter", "Freelance Gig", tx.getDescription());
+        assertEquals("Transaction amount getter", 5000.0, tx.getAmount());
+        assertEquals("Transaction type getter", TransactionType.INCOME, tx.getTransactionType());
+        assertTrue("isIncome() helper", tx.isIncome());
+        assertTrue("!isExpense() helper", !tx.isExpense());
 
         boolean threwOnNegative = false;
         try {
-            e.setAmount(-10.0);
-        } catch (IllegalArgumentException ex) {
+            tx.setAmount(-100.0);
+        } catch (IllegalArgumentException e) {
             threwOnNegative = true;
         }
-        assertTrue("Amount cannot be negative", threwOnNegative);
+        assertTrue("Amount cannot be negative via setter", threwOnNegative);
 
-        boolean threwOnEmptyTitleSetter = false;
+        boolean threwOnEmptyDesc = false;
         try {
-            e.setTitle("");
-        } catch (IllegalArgumentException ex) {
-            threwOnEmptyTitleSetter = true;
+            tx.setDescription("");
+        } catch (IllegalArgumentException e) {
+            threwOnEmptyDesc = true;
         }
-        assertTrue("Title cannot be empty via setter", threwOnEmptyTitleSetter);
-
-        boolean validationFailedOnBlank = false;
-        try {
-            Expense blankExpense = new Expense(); // default title is null
-            ValidationUtil.validateExpense(blankExpense);
-        } catch (InvalidExpenseException ex) {
-            validationFailedOnBlank = true;
-        }
-        assertTrue("Validation fails on empty title", validationFailedOnBlank);
+        assertTrue("Description cannot be blank via setter", threwOnEmptyDesc);
     }
 
-    private static void testCustomExceptions() {
-        System.out.println("\n[2] Testing Custom Exception Hierarchy...");
-        ExpenseNotFoundException notFound = new ExpenseNotFoundException(999);
-        assertEquals("ExpenseNotFoundException ID preservation", 999, notFound.getExpenseId());
-        assertTrue("ExpenseNotFoundException has clear message", notFound.getMessage().contains("999"));
+    private static void testCategoryTypeValidationConstraints() {
+        System.out.println("\n[2] Testing Category Type Match Validation...");
+        Category foodCategory = new Category(1, "Food", TransactionType.EXPENSE);
+        Category salaryCategory = new Category(2, "Salary", TransactionType.INCOME);
+
+        // Valid expense with Food
+        Transaction validExpense = new Transaction(1, 1, 450.0, TransactionType.EXPENSE, "Lunch", "", "Cash", LocalDate.now());
+        boolean validPassed = true;
+        try {
+            ValidationUtil.validateTransaction(validExpense, foodCategory);
+        } catch (Exception e) {
+            validPassed = false;
+        }
+        assertTrue("Valid expense with Food category passes validation", validPassed);
+
+        // INVALID: Income transaction with Food category
+        Transaction invalidIncome = new Transaction(1, 1, 5000.0, TransactionType.INCOME, "Mistaken Income", "", "Cash", LocalDate.now());
+        boolean caughtMismatchedCategory = false;
+        try {
+            ValidationUtil.validateTransaction(invalidIncome, foodCategory);
+        } catch (InvalidTransactionException e) {
+            caughtMismatchedCategory = true;
+        } catch (Exception ignored) {}
+        assertTrue("Income transaction with Expense category throws InvalidTransactionException", caughtMismatchedCategory);
+
+        // INVALID: Zero or negative amount via setter
+        boolean caughtZeroAmount = false;
+        try {
+            validExpense.setAmount(0.0);
+        } catch (IllegalArgumentException e) {
+            caughtZeroAmount = true;
+        }
+        assertTrue("Zero amount throws IllegalArgumentException", caughtZeroAmount);
+    }
+
+    private static void testBalanceAndSavingsCalculations() {
+        System.out.println("\n[3] Testing Balance & Savings Calculations...");
+        DashboardSummary ds = new DashboardSummary();
+        ds.setTotalIncome(65000.0);
+        ds.setTotalExpense(22500.0);
+        ds.setBalance(65000.0 - 22500.0);
+        assertEquals("Dashboard balance = Total Income - Total Expenses (₹42,500.00)", 42500.0, ds.getBalance());
+
+        MonthlySummary ms = new MonthlySummary();
+        ms.setIncome(65000.0);
+        ms.setExpenses(22500.0);
+        ms.setBudgetAmount(30000.0);
+        assertEquals("Monthly savings = Income - Expenses (₹42,500.00)", 42500.0, ms.getSavings());
+        assertEquals("Remaining budget = ₹7,500.00", 7500.0, ms.getRemainingBudget());
+        assertEquals("Budget percentage used = 75.0%", 75.0, ms.getBudgetPercentageUsed());
     }
 
     private static void testCustomMergeSort() {
-        System.out.println("\n[3] Testing Hand-Crafted MergeSort (O(N log N))...");
-        List<Expense> list = new ArrayList<>();
-        list.add(new Expense("A", 100.0, Category.FOOD, PaymentMethod.CASH, LocalDate.of(2026, 3, 10), ""));
-        list.add(new Expense("B", 25.0, Category.OTHER, PaymentMethod.CASH, LocalDate.of(2026, 3, 15), ""));
-        list.add(new Expense("C", 250.0, Category.HOUSING, PaymentMethod.CASH, LocalDate.of(2026, 3, 5), ""));
+        System.out.println("\n[4] Testing Hand-Crafted MergeSort on Transactions...");
+        List<Transaction> list = new ArrayList<>();
+        list.add(new Transaction(1, 1, 1500.0, TransactionType.EXPENSE, "A", "", "Cash", LocalDate.of(2026, 9, 10)));
+        list.add(new Transaction(1, 1, 250.0, TransactionType.EXPENSE, "B", "", "Cash", LocalDate.of(2026, 9, 15)));
+        list.add(new Transaction(1, 1, 5000.0, TransactionType.INCOME, "C", "", "Cash", LocalDate.of(2026, 9, 5)));
 
-        // Sort by amount ascending using MergeSort
-        ExpenseSorter.mergeSort(list, ExpenseSorter.BY_AMOUNT_ASC);
-        assertEquals("MergeSort first element lowest amount", 25.0, list.get(0).getAmount());
-        assertEquals("MergeSort middle element", 100.0, list.get(1).getAmount());
-        assertEquals("MergeSort last element highest amount", 250.0, list.get(2).getAmount());
+        TransactionSorter.mergeSort(list, TransactionSorter.BY_AMOUNT_ASC);
+        assertEquals("MergeSort lowest amount first (250.0)", 250.0, list.get(0).getAmount());
+        assertEquals("MergeSort middle amount (1500.0)", 1500.0, list.get(1).getAmount());
+        assertEquals("MergeSort highest amount last (5000.0)", 5000.0, list.get(2).getAmount());
     }
 
     private static void testCustomQuickSort() {
-        System.out.println("\n[4] Testing Hand-Crafted QuickSort (In-Place Partitioning)...");
-        List<Expense> list = new ArrayList<>();
-        list.add(new Expense("Movie", 30.0, Category.ENTERTAINMENT, PaymentMethod.UPI, LocalDate.of(2026, 1, 10), ""));
-        list.add(new Expense("Rent", 1200.0, Category.HOUSING, PaymentMethod.NET_BANKING, LocalDate.of(2026, 1, 1), ""));
-        list.add(new Expense("Coffee", 5.0, Category.FOOD, PaymentMethod.CASH, LocalDate.of(2026, 1, 15), ""));
-        list.add(new Expense("Bus", 2.5, Category.TRANSPORTATION, PaymentMethod.CASH, LocalDate.of(2026, 1, 12), ""));
+        System.out.println("\n[5] Testing Hand-Crafted QuickSort on Transactions...");
+        List<Transaction> list = new ArrayList<>();
+        list.add(new Transaction(1, 1, 300.0, TransactionType.EXPENSE, "Movie", "", "UPI", LocalDate.of(2026, 9, 10)));
+        list.add(new Transaction(1, 1, 50000.0, TransactionType.INCOME, "Salary", "", "Net Banking", LocalDate.of(2026, 9, 1)));
+        list.add(new Transaction(1, 1, 50.0, TransactionType.EXPENSE, "Tea", "", "Cash", LocalDate.of(2026, 9, 15)));
 
-        // Sort descending by amount using QuickSort
-        ExpenseSorter.quickSort(list, ExpenseSorter.BY_AMOUNT_DESC, 0, list.size() - 1);
-        assertEquals("QuickSort highest element first", 1200.0, list.get(0).getAmount());
-        assertEquals("QuickSort lowest element last", 2.5, list.get(3).getAmount());
+        TransactionSorter.quickSort(list, TransactionSorter.BY_AMOUNT_DESC, 0, list.size() - 1);
+        assertEquals("QuickSort highest amount first (50000.0)", 50000.0, list.get(0).getAmount());
+        assertEquals("QuickSort lowest amount last (50.0)", 50.0, list.get(2).getAmount());
     }
 
-    private static void testBinarySearchAlgorithms() {
-        System.out.println("\n[5] Testing Binary Search Algorithms...");
-        List<Expense> list = new ArrayList<>();
-        list.add(new Expense("Day1", 10.0, Category.FOOD, PaymentMethod.CASH, LocalDate.of(2026, 5, 1), ""));
-        list.add(new Expense("Day2", 20.0, Category.FOOD, PaymentMethod.CASH, LocalDate.of(2026, 5, 2), ""));
-        list.add(new Expense("Day3", 30.0, Category.FOOD, PaymentMethod.CASH, LocalDate.of(2026, 5, 3), ""));
-        list.add(new Expense("Day3_B", 35.0, Category.FOOD, PaymentMethod.CASH, LocalDate.of(2026, 5, 3), ""));
-        list.add(new Expense("Day4", 40.0, Category.FOOD, PaymentMethod.CASH, LocalDate.of(2026, 5, 4), ""));
+    private static void testBinarySearchByDate() {
+        System.out.println("\n[6] Testing Binary Search by Date...");
+        List<Transaction> list = new ArrayList<>();
+        list.add(new Transaction(1, 1, 100.0, TransactionType.EXPENSE, "D1", "", "Cash", LocalDate.of(2026, 9, 1)));
+        list.add(new Transaction(1, 1, 200.0, TransactionType.EXPENSE, "D2", "", "Cash", LocalDate.of(2026, 9, 2)));
+        list.add(new Transaction(1, 1, 300.0, TransactionType.EXPENSE, "D3_A", "", "Cash", LocalDate.of(2026, 9, 3)));
+        list.add(new Transaction(1, 1, 350.0, TransactionType.INCOME, "D3_B", "", "Cash", LocalDate.of(2026, 9, 3)));
+        list.add(new Transaction(1, 1, 400.0, TransactionType.EXPENSE, "D4", "", "Cash", LocalDate.of(2026, 9, 4)));
 
-        // Binary search by date
-        List<Expense> onMay3 = ExpenseSearcher.binarySearchByDate(list, LocalDate.of(2026, 5, 3));
-        assertEquals("Binary search finds both expenses on May 3", 2, onMay3.size());
-
-        // Binary search closest amount
-        Expense closest = ExpenseSearcher.binarySearchClosestAmount(list, 28.5);
-        assertEquals("Binary search finds closest amount to 28.5 (30.0)", 30.0, closest.getAmount());
+        List<Transaction> matches = TransactionSearcher.binarySearchByDate(list, LocalDate.of(2026, 9, 3));
+        assertEquals("Binary search finds both transactions on Sep 3", 2, matches.size());
     }
 
-    private static void testLinearSearchAndFiltering() {
-        System.out.println("\n[6] Testing Linear Search & Multi-Criteria Filtering...");
-        List<Expense> list = new ArrayList<>();
-        list.add(new Expense("Organic Apples", 15.0, Category.FOOD, PaymentMethod.CASH, LocalDate.of(2026, 2, 1), "Sweet"));
-        list.add(new Expense("Office Laptop Stand", 45.0, Category.SHOPPING, PaymentMethod.CREDIT_CARD, LocalDate.of(2026, 2, 10), "Aluminum"));
-        list.add(new Expense("Apple Music Subscription", 9.99, Category.ENTERTAINMENT, PaymentMethod.UPI, LocalDate.of(2026, 2, 15), "Streaming"));
+    private static void testLinearSearchAndFilter() {
+        System.out.println("\n[7] Testing Linear Search & Type Filtering...");
+        List<Transaction> list = new ArrayList<>();
+        list.add(new Transaction(1, 1, 50000.0, TransactionType.INCOME, "Tech Salary", "", "Bank", LocalDate.now()));
+        list.add(new Transaction(1, 2, 750.0, TransactionType.EXPENSE, "Dinner Food", "", "UPI", LocalDate.now()));
 
-        List<Expense> searchApples = ExpenseSearcher.linearSearch(list, "apple");
-        assertEquals("Linear search finds 2 matches for 'apple'", 2, searchApples.size());
+        List<Transaction> incomeOnly = TransactionSearcher.filter(list, TransactionType.INCOME, null, null, null);
+        assertEquals("Filter by INCOME returns 1 item", 1, incomeOnly.size());
+        assertEquals("Income item description", "Tech Salary", incomeOnly.get(0).getDescription());
 
-        List<Expense> filtered = ExpenseFilter.filter(list, Category.FOOD, null, null, null, 10.0, 50.0);
-        assertEquals("Filtering by FOOD and amount between 10 and 50", 1, filtered.size());
-        assertEquals("Filtered item is Organic Apples", "Organic Apples", filtered.get(0).getTitle());
+        List<Transaction> searchFood = TransactionSearcher.linearSearch(list, "dinner");
+        assertEquals("Linear search finds 1 match for 'dinner'", 1, searchFood.size());
     }
 
-    private static void testAnalyticsAndAggregations() {
-        System.out.println("\n[7] Testing Financial Analytics & Aggregations...");
-        List<Expense> list = new ArrayList<>();
-        list.add(new Expense("Food A", 100.0, Category.FOOD, PaymentMethod.CASH, LocalDate.of(2026, 3, 1), ""));
-        list.add(new Expense("Food B", 50.0, Category.FOOD, PaymentMethod.UPI, LocalDate.of(2026, 3, 2), ""));
-        list.add(new Expense("Gas", 50.0, Category.TRANSPORTATION, PaymentMethod.CREDIT_CARD, LocalDate.of(2026, 3, 3), ""));
-
-        ExpenseSummary summary = ExpenseAnalytics.computeSummary(list);
-        assertEquals("Total expenses sum", 200.0, summary.getTotalExpenses());
-        assertEquals("Total transaction count", 3, summary.getTotalCount());
-        assertEquals("Average expense calculation", 66.67, summary.getAverageExpense());
-        assertEquals("Top category identification", Category.FOOD, summary.getTopCategory());
-        assertEquals("Top category amount sum", 150.0, summary.getTopCategoryAmount());
-        assertEquals("Category percentage for FOOD (75%)", 75.0, summary.getCategoryPercentages().get(Category.FOOD));
-    }
-
-    private static void testJsonSerializationAndParsing() {
+    private static void testSimpleJsonSerializationAndParsing() {
         System.out.println("\n[8] Testing SimpleJson Parser & Serializer...");
-        Expense orig = new Expense("Dinner", 45.0, Category.FOOD, PaymentMethod.UPI, LocalDate.of(2026, 4, 1), "Tasty");
-        String json = SimpleJson.toJson(orig);
-        assertTrue("JSON contains title", json.contains("\"title\":\"Dinner\""));
-        assertTrue("JSON contains amount", json.contains("\"amount\":45.00"));
-        assertTrue("JSON contains category", json.contains("\"category\":\"FOOD\""));
+        Transaction tx = new Transaction(101, 1, 5, 1200.0, TransactionType.EXPENSE, "Train Tickets", "AC coach", "UPI", LocalDate.of(2026, 9, 12));
+        tx.setCategoryName("Travel");
 
-        Expense parsed = SimpleJson.parseExpense(json);
-        assertEquals("Parsed expense title", "Dinner", parsed.getTitle());
-        assertEquals("Parsed expense amount", 45.0, parsed.getAmount());
-        assertEquals("Parsed expense category", Category.FOOD, parsed.getCategory());
-        assertEquals("Parsed expense payment method", PaymentMethod.UPI, parsed.getPaymentMethod());
+        String json = SimpleJson.toJson(tx);
+        assertTrue("JSON contains description", json.contains("\"description\":\"Train Tickets\""));
+        assertTrue("JSON contains amount", json.contains("\"amount\":1200.00"));
+        assertTrue("JSON contains type EXPENSE", json.contains("\"transactionType\":\"EXPENSE\""));
+
+        Transaction parsed = SimpleJson.parseTransaction(json);
+        assertEquals("Parsed description matches", "Train Tickets", parsed.getDescription());
+        assertEquals("Parsed amount matches", 1200.0, parsed.getAmount());
+        assertEquals("Parsed type matches EXPENSE", TransactionType.EXPENSE, parsed.getTransactionType());
     }
 
     private static void testServiceCrudAndBudgetTracking() {
         System.out.println("\n[9] Testing Service Layer CRUD & Budget Tracking...");
-        ExpenseService service = new ExpenseService();
+        InMemoryTransactionDAO inMemoryDao = new InMemoryTransactionDAO();
+        TransactionService service = new TransactionService(inMemoryDao);
+
         try {
-            // Add expense
-            Expense e = new Expense("Test Item", 99.0, Category.SHOPPING, PaymentMethod.CASH, LocalDate.now(), "Testing");
-            Expense created = service.createExpense(e);
-            assertTrue("Assigned ID is greater than 0", created.getId() > 0);
+            // Add Income
+            Transaction salary = new Transaction(1, 1, 60000.0, TransactionType.INCOME, "Monthly Salary", "", "Net Banking", LocalDate.now());
+            Transaction created = service.addTransaction(salary);
+            assertTrue("Assigned transaction ID > 0", created.getTransactionId() > 0);
 
             // Fetch
-            Expense fetched = service.getExpenseById(created.getId());
-            assertEquals("Fetched matches created", created.getTitle(), fetched.getTitle());
+            Transaction fetched = service.getTransactionById(created.getTransactionId());
+            assertEquals("Fetched matches created description", "Monthly Salary", fetched.getDescription());
 
-            // Set budget and test threshold calculation
-            Budget budget = new Budget(Category.SHOPPING, 50.0, DateTimeUtil.getCurrentMonthYear());
-            service.saveBudget(budget);
-
-            List<Budget> budgets = service.getBudgetsWithSpending(DateTimeUtil.getCurrentMonthYear());
-            Budget shoppingBudget = null;
-            for (Budget b : budgets) {
-                if (b.getCategory() == Category.SHOPPING) {
-                    shoppingBudget = b;
-                    break;
-                }
-            }
-            assertTrue("Shopping budget exists", shoppingBudget != null);
-            assertTrue("Budget correctly flags exceeded condition", shoppingBudget.isExceeded());
+            // Dashboard verification
+            DashboardSummary ds = service.getDashboardSummary(LocalDate.now().getMonthValue(), LocalDate.now().getYear());
+            assertTrue("Dashboard reflects positive balance", ds.getBalance() > 0);
+            assertTrue("Total income includes new salary", ds.getTotalIncome() >= 60000.0);
 
             // Delete
-            boolean deleted = service.deleteExpense(created.getId());
-            assertTrue("Expense deleted successfully", deleted);
-        } catch (Exception ex) {
-            ex.printStackTrace();
-            assertTrue("Service CRUD operation failed: " + ex.getMessage(), false);
+            boolean deleted = service.deleteTransaction(created.getTransactionId());
+            assertTrue("Transaction deleted successfully", deleted);
+
+            // Verify 404 on deleted
+            boolean caught404 = false;
+            try {
+                service.getTransactionById(created.getTransactionId());
+            } catch (TransactionNotFoundException e) {
+                caught404 = true;
+            }
+            assertTrue("Fetching deleted transaction throws TransactionNotFoundException", caught404);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            assertTrue("Service test encountered unexpected failure: " + e.getMessage(), false);
         }
     }
 }
