@@ -1,0 +1,35 @@
+# Compiled class files
+*.class
+bin/
+out/
+target/
+
+# Package Files
+*.war
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# Log files
+*.log
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE configuration files
+.idea/
+*.iml
+.vscode/
+.settings/
+.project
+.classpath
+
+# Sensitive local credentials (optional overrides)
+# db.local.properties

@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ExpenseTracker | Core Java Full-Stack</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💰</text></svg>">
+</head>
+<body>
+
+    <!-- Top Navigation Bar -->
+    <header class="navbar">
+        <div class="nav-container">
+            <div class="brand">
+                <span class="brand-icon">💰</span>
+                <div class="brand-text">
+                    <h1>ExpenseTracker</h1>
+                    <span class="brand-subtitle">Core Java &bull; JDBC &bull; REST API &bull; DSA</span>
+                </div>
+            </div>
+
+            <div class="nav-actions">
+                <div id="storageBadge" class="badge badge-storage">
+                    <span class="status-dot"></span>
+                    <span id="storageLabel">Connecting...</span>
+                </div>
+                <button id="btnReloadDemo" class="btn btn-secondary btn-sm" title="Reset sample records">
+                    <span>🔄 Demo Data</span>
+                </button>
+                <button id="btnExportCsv" class="btn btn-secondary btn-sm" title="Export expenses as CSV">
+                    <span>📥 Export CSV</span>
+                </button>
+                <button id="btnOpenAddModal" class="btn btn-primary btn-sm">
+                    <span>➕ Add Expense</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="main-content">
+        <!-- KPI Analytics Metric Cards -->
+        <section class="metrics-grid">
+            <div class="metric-card">
+                <div class="metric-header">
+                    <span class="metric-title">Total Spending</span>
+                    <span class="metric-icon-box">💵</span>
+                </div>
+                <div class="metric-value" id="kpiTotalSpent">$0.00</div>
+                <div class="metric-footer" id="kpiTotalCount">0 total transactions</div>
+            </div>
+
+            <div class="metric-card">
+                <div class="metric-header">
+                    <span class="metric-title">Average Expense</span>
+                    <span class="metric-icon-box">📊</span>
+                </div>
+                <div class="metric-value" id="kpiAverage">$0.00</div>
+                <div class="metric-footer">Per transaction average</div>
+            </div>
+
+            <div class="metric-card">
+                <div class="metric-header">
+                    <span class="metric-title">Top Category</span>
+                    <span class="metric-icon-box" id="kpiTopCatIcon">🛍️</span>
+                </div>
+                <div class="metric-value" id="kpiTopCatName">None</div>
+                <div class="metric-footer" id="kpiTopCatAmount">$0.00 spent</div>
+            </div>
+
+            <div class="metric-card">
+                <div class="metric-header">
+                    <span class="metric-title">Highest Single Expense</span>
+                    <span class="metric-icon-box">🏆</span>
+                </div>
+                <div class="metric-value" id="kpiHighestAmount">$0.00</div>
+                <div class="metric-footer" id="kpiHighestTitle">No records</div>
+            </div>
+        </section>
+
+        <!-- Charts & Budget Row -->
+        <section class="insights-row">
+            <!-- Pure HTML5 Canvas Donut Chart for Category Breakdown -->
+            <div class="card insight-card">
+                <div class="card-header">
+                    <h3>Spending by Category</h3>
+                    <span class="text-muted text-sm">Visual Distribution</span>
+                </div>
+                <div class="chart-wrapper">
+                    <canvas id="categoryDonutChart" width="300" height="240"></canvas>
+                    <div id="chartLegend" class="chart-legend"></div>
+                </div>
+            </div>
+
+            <!-- Budget Progress Card -->
+            <div class="card insight-card">
+                <div class="card-header">
+                    <div>
+                        <h3>Monthly Category Budgets</h3>
+                        <span class="text-muted text-sm" id="budgetMonthLabel">Current Month</span>
+                    </div>
+                    <button id="btnOpenBudgetModal" class="btn btn-outline btn-sm">⚙️ Set Budget</button>
+                </div>
+                <div id="budgetsListContainer" class="budgets-container">
+                    <!-- Populated dynamically by app.js -->
+                    <p class="text-muted text-center py-4">Loading budget allocations...</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Filter & Search Toolbar (Demonstrating DSA Features) -->
+        <section class="card filter-card">
+            <div class="filter-header">
+                <div class="filter-title-group">
+                    <h3>Transactions & DSA Filtering</h3>
+                    <span class="dsa-badge" id="algoIndicator">Algo: TimSort</span>
+                </div>
+                <div class="filter-actions-top">
+                    <button id="btnResetFilters" class="btn btn-ghost btn-sm">Reset Filters</button>
+                </div>
+            </div>
+
+            <div class="filter-controls-grid">
+                <!-- Search Input -->
+                <div class="form-group search-group">
+                    <label for="filterSearch">Search Query</label>
+                    <div class="input-with-icon">
+                        <span class="input-icon">🔍</span>
+                        <input type="text" id="filterSearch" placeholder="Search title, notes, payee...">
+                    </div>
+                </div>
+
+                <!-- Category Filter -->
+                <div class="form-group">
+                    <label for="filterCategory">Category</label>
+                    <select id="filterCategory">
+                        <option value="ALL">All Categories</option>
+                    </select>
+                </div>
+
+                <!-- Payment Method Filter -->
+                <div class="form-group">
+                    <label for="filterPaymentMethod">Payment Method</label>
+                    <select id="filterPaymentMethod">
+                        <option value="ALL">All Methods</option>
+                    </select>
+                </div>
+
+                <!-- Start Date -->
+                <div class="form-group">
+                    <label for="filterStartDate">Start Date</label>
+                    <input type="date" id="filterStartDate">
+                </div>
+
+                <!-- End Date -->
+                <div class="form-group">
+                    <label for="filterEndDate">End Date</label>
+                    <input type="date" id="filterEndDate">
+                </div>
+
+                <!-- Sort By -->
+                <div class="form-group">
+                    <label for="filterSortBy">Sort By</label>
+                    <select id="filterSortBy">
+                        <option value="date">Date</option>
+                        <option value="amount">Amount</option>
+                        <option value="title">Title</option>
+                        <option value="category">Category</option>
+                    </select>
+                </div>
+
+                <!-- Sort Order -->
+                <div class="form-group">
+                    <label for="filterSortOrder">Order</label>
+                    <select id="filterSortOrder">
+                        <option value="desc">Descending</option>
+                        <option value="asc">Ascending</option>
+                    </select>
+                </div>
+
+                <!-- DSA Algorithm Demonstration -->
+                <div class="form-group highlight-group">
+                    <label for="filterAlgo" title="Choose backend sorting algorithm to demonstrate DSA knowledge">
+                        DSA Algorithm ⚡
+                    </label>
+                    <select id="filterAlgo">
+                        <option value="TIM_SORT">Java TimSort (Collections.sort)</option>
+                        <option value="MERGE_SORT">MergeSort O(N log N) - Hand-Crafted</option>
+                        <option value="QUICK_SORT">QuickSort O(N log N) - Hand-Crafted</option>
+                    </select>
+                </div>
+            </div>
+        </section>
+
+        <!-- Expenses Table Card -->
+        <section class="card table-card">
+            <div class="card-header">
+                <div>
+                    <h3>Expense Records</h3>
+                    <span class="text-muted text-sm" id="tableRecordCount">Showing 0 records</span>
+                </div>
+                <div id="dsaBenchmarkTag" class="benchmark-tag">Backend Query: OK</div>
+            </div>
+
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 70px;">ID</th>
+                            <th style="width: 130px;">Date</th>
+                            <th>Title & Description</th>
+                            <th style="width: 170px;">Category</th>
+                            <th style="width: 150px;">Payment Method</th>
+                            <th style="width: 120px; text-align: right;">Amount</th>
+                            <th style="width: 120px; text-align: center;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="expensesTableBody">
+                        <tr>
+                            <td colspan="7" class="text-center py-6 text-muted">Loading expense transactions...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Empty State Display -->
+            <div id="emptyState" class="empty-state hidden">
+                <div class="empty-icon">📂</div>
+                <h4>No Expenses Found</h4>
+                <p class="text-muted">No expenses match your search or filter criteria.</p>
+                <button class="btn btn-secondary btn-sm mt-3" onclick="resetFilters()">Clear Filters</button>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="footer-container">
+            <p><strong>Personal Expense Tracker</strong> &bull; Core Java Portfolio Project for Fresher Developers</p>
+            <p class="text-muted text-xs mt-1">Built with Java SE HttpServer, JDBC, MySQL, Java Collections & Pure Vanilla JS</p>
+        </div>
+    </footer>
+
+    <!-- ================================================================= -->
+    <!--  MODAL: ADD / EDIT EXPENSE                                        -->
+    <!-- ================================================================= -->
+    <div id="expenseModal" class="modal-backdrop hidden">
+        <div class="modal-dialog">
+            <div class="modal-header">
+                <h3 id="modalTitle">Add New Expense</h3>
+                <button type="button" class="modal-close" id="btnModalClose">&times;</button>
+            </div>
+
+            <form id="expenseForm">
+                <input type="hidden" id="expenseId" value="">
+
+                <div class="modal-body">
+                    <div id="formErrorBanner" class="alert alert-danger hidden"></div>
+
+                    <div class="form-group">
+                        <label for="formTitle">Expense Title <span class="required">*</span></label>
+                        <input type="text" id="formTitle" placeholder="e.g. Weekly Grocery Shopping" required maxlength="150">
+                    </div>
+
+                    <div class="form-row-2">
+                        <div class="form-group">
+                            <label for="formAmount">Amount ($) <span class="required">*</span></label>
+                            <input type="number" id="formAmount" placeholder="0.00" step="0.01" min="0.01" max="10000000" required>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="formDate">Date <span class="required">*</span></label>
+                            <input type="date" id="formDate" required>
+                        </div>
+                    </div>
+
+                    <div class="form-row-2">
+                        <div class="form-group">
+                            <label for="formCategory">Category <span class="required">*</span></label>
+                            <select id="formCategory" required></select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="formPaymentMethod">Payment Method <span class="required">*</span></label>
+                            <select id="formPaymentMethod" required></select>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="formNotes">Notes / Description (Optional)</label>
+                        <textarea id="formNotes" rows="2" placeholder="Add extra details, payee, or invoice tags..." maxlength="500"></textarea>
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" id="btnModalCancel">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="btnSaveExpense">Save Expense</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ================================================================= -->
+    <!--  MODAL: SET / EDIT BUDGET                                         -->
+    <!-- ================================================================= -->
+    <div id="budgetModal" class="modal-backdrop hidden">
+        <div class="modal-dialog modal-dialog-sm">
+            <div class="modal-header">
+                <h3>Set Monthly Category Budget</h3>
+                <button type="button" class="modal-close" id="btnBudgetModalClose">&times;</button>
+            </div>
+
+            <form id="budgetForm">
+                <div class="modal-body">
+                    <div id="budgetErrorBanner" class="alert alert-danger hidden"></div>
+
+                    <div class="form-group">
+                        <label for="budgetCategory">Category <span class="required">*</span></label>
+                        <select id="budgetCategory" required></select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="budgetLimit">Monthly Limit ($) <span class="required">*</span></label>
+                        <input type="number" id="budgetLimit" placeholder="500.00" step="1.00" min="0" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="budgetMonth">Target Month</label>
+                        <input type="month" id="budgetMonth" required>
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" id="btnBudgetModalCancel">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Budget</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ================================================================= -->
+    <!--  MODAL: CONFIRM DELETE                                            -->
+    <!-- ================================================================= -->
+    <div id="deleteModal" class="modal-backdrop hidden">
+        <div class="modal-dialog modal-dialog-sm">
+            <div class="modal-header">
+                <h3>Confirm Deletion</h3>
+                <button type="button" class="modal-close" id="btnDeleteModalClose">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p id="deleteModalMessage">Are you sure you want to permanently delete this expense?</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" id="btnCancelDelete">Cancel</button>
+                <button type="button" class="btn btn-danger" id="btnConfirmDelete">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notifications Container -->
+    <div id="toastContainer" class="toast-container"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>
