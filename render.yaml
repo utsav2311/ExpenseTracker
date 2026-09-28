@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: personal-income-expense-tracker
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: Dockerfile
+    envVars:
+      - key: PORT
+        value: 8080
+      - key: STORAGE_MODE
+        value: memory

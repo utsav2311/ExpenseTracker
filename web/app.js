@@ -19,7 +19,8 @@ const state = {
     monthly: null,
     selectedMonth: new Date().toISOString().substring(0, 7), // "YYYY-MM"
     deleteTarget: null,
-    searchDebounceTimer: null
+    searchDebounceTimer: null,
+    isDemoMode: false
 };
 
 // Vibrant, accessible category colors for badges and charts
@@ -38,6 +39,411 @@ const CATEGORY_COLORS = {
     Health: '#f43f5e',
     Rent: '#64748b',
     'Other Expense': '#94a3b8'
+};
+
+// =============================================================================
+//  IN-BROWSER DEMO ENGINE (Used on Vercel or when backend is offline)
+// =============================================================================
+const DemoEngine = {
+    STORAGE_KEY: 'EXPENSE_TRACKER_DEMO_DATA_V1',
+
+    DEFAULT_CATEGORIES: [
+        { categoryId: 1, categoryName: 'Salary', categoryType: 'INCOME', icon: '💼' },
+        { categoryId: 2, categoryName: 'Freelance', categoryType: 'INCOME', icon: '💻' },
+        { categoryId: 3, categoryName: 'Bonus', categoryType: 'INCOME', icon: '🎁' },
+        { categoryId: 4, categoryName: 'Investment', categoryType: 'INCOME', icon: '📈' },
+        { categoryId: 5, categoryName: 'Other Income', categoryType: 'INCOME', icon: '💵' },
+        { categoryId: 6, categoryName: 'Food & Dining', categoryType: 'EXPENSE', icon: '🍔' },
+        { categoryId: 7, categoryName: 'Transportation', categoryType: 'EXPENSE', icon: '🚗' },
+        { categoryId: 8, categoryName: 'Housing & Rent', categoryType: 'EXPENSE', icon: '🏠' },
+        { categoryId: 9, categoryName: 'Utilities', categoryType: 'EXPENSE', icon: '💡' },
+        { categoryId: 10, categoryName: 'Entertainment', categoryType: 'EXPENSE', icon: '🎬' },
+        { categoryId: 11, categoryName: 'Education', categoryType: 'EXPENSE', icon: '📚' },
+        { categoryId: 12, categoryName: 'Health & Medical', categoryType: 'EXPENSE', icon: '🏥' },
+        { categoryId: 13, categoryName: 'Other Expense', categoryType: 'EXPENSE', icon: '📦' }
+    ],
+
+    DEFAULT_TRANSACTIONS: [
+        {
+            transactionId: 101,
+            userId: 1,
+            categoryId: 1,
+            categoryName: 'Salary',
+            categoryIcon: '💼',
+            transactionType: 'INCOME',
+            amount: 65000.00,
+            description: 'Tech Corp Monthly Salary',
+            paymentMethod: 'UPI',
+            transactionDate: '2026-03-01',
+            displayDate: 'Mar 01, 2026',
+            notes: 'Credited directly to savings account'
+        },
+        {
+            transactionId: 102,
+            userId: 1,
+            categoryId: 8,
+            categoryName: 'Housing & Rent',
+            categoryIcon: '🏠',
+            transactionType: 'EXPENSE',
+            amount: 14000.00,
+            description: 'Monthly Apartment Rent',
+            paymentMethod: 'Net Banking',
+            transactionDate: '2026-03-02',
+            displayDate: 'Mar 02, 2026',
+            notes: 'Transferred to landlord'
+        },
+        {
+            transactionId: 103,
+            userId: 1,
+            categoryId: 6,
+            categoryName: 'Food & Dining',
+            categoryIcon: '🍔',
+            transactionType: 'EXPENSE',
+            amount: 3850.00,
+            description: 'Grocery & Supermarket Restock',
+            paymentMethod: 'Credit Card',
+            transactionDate: '2026-03-05',
+            displayDate: 'Mar 05, 2026',
+            notes: 'Weekly pantry supplies, fruits, and veggies'
+        },
+        {
+            transactionId: 104,
+            userId: 1,
+            categoryId: 9,
+            categoryName: 'Utilities',
+            categoryIcon: '💡',
+            transactionType: 'EXPENSE',
+            amount: 1850.00,
+            description: 'Electricity & Water Utility Bill',
+            paymentMethod: 'UPI',
+            transactionDate: '2026-03-10',
+            displayDate: 'Mar 10, 2026',
+            notes: 'State electricity board payment'
+        },
+        {
+            transactionId: 105,
+            userId: 1,
+            categoryId: 2,
+            categoryName: 'Freelance',
+            categoryIcon: '💻',
+            transactionType: 'INCOME',
+            amount: 15000.00,
+            description: 'Freelance Web Design Project',
+            paymentMethod: 'Net Banking',
+            transactionDate: '2026-03-12',
+            displayDate: 'Mar 12, 2026',
+            notes: 'Milestone 2 payment received'
+        },
+        {
+            transactionId: 106,
+            userId: 1,
+            categoryId: 6,
+            categoryName: 'Food & Dining',
+            categoryIcon: '🍔',
+            transactionType: 'EXPENSE',
+            amount: 1200.00,
+            description: 'Weekend Dining & Cafe',
+            paymentMethod: 'UPI',
+            transactionDate: '2026-03-15',
+            displayDate: 'Mar 15, 2026',
+            notes: 'Dinner with colleagues'
+        },
+        {
+            transactionId: 107,
+            userId: 1,
+            categoryId: 12,
+            categoryName: 'Health & Medical',
+            categoryIcon: '🏥',
+            transactionType: 'EXPENSE',
+            amount: 6500.00,
+            description: 'Annual Health Insurance Premium',
+            paymentMethod: 'Credit Card',
+            transactionDate: '2026-03-18',
+            displayDate: 'Mar 18, 2026',
+            notes: 'Individual health cover renewal'
+        },
+        {
+            transactionId: 108,
+            userId: 1,
+            categoryId: 7,
+            categoryName: 'Transportation',
+            categoryIcon: '🚗',
+            transactionType: 'EXPENSE',
+            amount: 1100.00,
+            description: 'Fuel & Metro Smart Card Recharge',
+            paymentMethod: 'Cash',
+            transactionDate: '2026-03-20',
+            displayDate: 'Mar 20, 2026',
+            notes: 'Monthly city commute recharge'
+        }
+    ],
+
+    DEFAULT_BUDGETS: {
+        '2026-03': 35000.00
+    },
+
+    loadData() {
+        try {
+            const raw = localStorage.getItem(this.STORAGE_KEY);
+            if (raw) return JSON.parse(raw);
+        } catch (e) {
+            console.warn('LocalStorage unavailable, using memory store');
+        }
+        const initial = {
+            transactions: [...this.DEFAULT_TRANSACTIONS],
+            budgets: { ...this.DEFAULT_BUDGETS }
+        };
+        this.saveData(initial);
+        return initial;
+    },
+
+    saveData(data) {
+        try {
+            localStorage.setItem(this.STORAGE_KEY, JSON.stringify(data));
+        } catch (e) {
+            console.warn('Could not persist to LocalStorage', e);
+        }
+    },
+
+    getCategories(type) {
+        if (!type || type === 'ALL') return this.DEFAULT_CATEGORIES;
+        return this.DEFAULT_CATEGORIES.filter(c => c.categoryType === type);
+    },
+
+    getTransactions(filters = {}) {
+        const data = this.loadData();
+        let list = [...data.transactions];
+
+        if (filters.type && filters.type !== 'ALL') {
+            list = list.filter(t => t.transactionType === filters.type);
+        }
+        if (filters.category && filters.category !== 'ALL') {
+            const catId = parseInt(filters.category, 10);
+            list = list.filter(t => t.categoryId === catId);
+        }
+        if (filters.startDate) {
+            list = list.filter(t => t.transactionDate >= filters.startDate);
+        }
+        if (filters.endDate) {
+            list = list.filter(t => t.transactionDate <= filters.endDate);
+        }
+        if (filters.search) {
+            const q = filters.search.toLowerCase();
+            list = list.filter(t =>
+                (t.description && t.description.toLowerCase().includes(q)) ||
+                (t.notes && t.notes.toLowerCase().includes(q)) ||
+                (t.paymentMethod && t.paymentMethod.toLowerCase().includes(q)) ||
+                (t.categoryName && t.categoryName.toLowerCase().includes(q))
+            );
+        }
+
+        const sort = filters.sort || 'newest';
+        list.sort((a, b) => {
+            if (sort === 'newest') return b.transactionDate.localeCompare(a.transactionDate);
+            if (sort === 'oldest') return a.transactionDate.localeCompare(b.transactionDate);
+            if (sort === 'amount-desc') return b.amount - a.amount;
+            if (sort === 'amount-asc') return a.amount - b.amount;
+            return 0;
+        });
+
+        return list;
+    },
+
+    addTransaction(tx) {
+        const data = this.loadData();
+        const cat = this.DEFAULT_CATEGORIES.find(c => c.categoryId === tx.categoryId) || {};
+        const newTx = {
+            transactionId: Date.now(),
+            userId: 1,
+            categoryId: tx.categoryId,
+            categoryName: cat.categoryName || 'Other',
+            categoryIcon: cat.icon || '🏷️',
+            transactionType: tx.transactionType,
+            amount: parseFloat(tx.amount),
+            description: tx.description,
+            paymentMethod: tx.paymentMethod || 'Cash',
+            transactionDate: tx.transactionDate,
+            displayDate: formatDateDisplay(tx.transactionDate),
+            notes: tx.notes || ''
+        };
+        data.transactions.unshift(newTx);
+        this.saveData(data);
+        return newTx;
+    },
+
+    updateTransaction(id, tx) {
+        const data = this.loadData();
+        const idx = data.transactions.findIndex(t => t.transactionId === parseInt(id, 10));
+        if (idx === -1) throw new Error('Transaction not found');
+        const cat = this.DEFAULT_CATEGORIES.find(c => c.categoryId === tx.categoryId) || {};
+        data.transactions[idx] = {
+            ...data.transactions[idx],
+            categoryId: tx.categoryId,
+            categoryName: cat.categoryName || data.transactions[idx].categoryName,
+            categoryIcon: cat.icon || data.transactions[idx].categoryIcon,
+            transactionType: tx.transactionType,
+            amount: parseFloat(tx.amount),
+            description: tx.description,
+            paymentMethod: tx.paymentMethod || 'Cash',
+            transactionDate: tx.transactionDate,
+            displayDate: formatDateDisplay(tx.transactionDate),
+            notes: tx.notes || ''
+        };
+        this.saveData(data);
+        return data.transactions[idx];
+    },
+
+    deleteTransaction(id) {
+        const data = this.loadData();
+        data.transactions = data.transactions.filter(t => t.transactionId !== parseInt(id, 10));
+        this.saveData(data);
+    },
+
+    getDashboard() {
+        const data = this.loadData();
+        let totalIncome = 0;
+        let totalExpense = 0;
+
+        data.transactions.forEach(t => {
+            if (t.transactionType === 'INCOME') totalIncome += t.amount;
+            else totalExpense += t.amount;
+        });
+
+        const currentMonth = new Date().toISOString().substring(0, 7);
+        const monthlyBudget = data.budgets[currentMonth] || 35000.00;
+        const budgetRemaining = monthlyBudget - totalExpense;
+        const budgetPercentage = monthlyBudget > 0 ? (totalExpense / monthlyBudget) * 100 : 0;
+
+        const recent = [...data.transactions]
+            .sort((a, b) => b.transactionDate.localeCompare(a.transactionDate))
+            .slice(0, 5);
+
+        return {
+            balance: totalIncome - totalExpense,
+            totalIncome: totalIncome,
+            totalExpense: totalExpense,
+            monthlyBudget: monthlyBudget,
+            budgetRemaining: budgetRemaining,
+            budgetPercentage: budgetPercentage,
+            recentTransactions: recent
+        };
+    },
+
+    getMonthlyReport(year, month) {
+        const data = this.loadData();
+        const monthKey = `${year}-${String(month).padStart(2, '0')}`;
+        const monthTxs = data.transactions.filter(t => t.transactionDate.startsWith(monthKey));
+
+        let income = 0;
+        let expenses = 0;
+        let highestExp = null;
+        const catMap = {};
+
+        monthTxs.forEach(t => {
+            if (t.transactionType === 'INCOME') {
+                income += t.amount;
+            } else {
+                expenses += t.amount;
+                if (!highestExp || t.amount > highestExp.amount) {
+                    highestExp = t;
+                }
+                catMap[t.categoryName] = (catMap[t.categoryName] || 0) + t.amount;
+            }
+        });
+
+        let highestCat = null;
+        let highestCatAmount = 0;
+        for (const [cat, amt] of Object.entries(catMap)) {
+            if (amt > highestCatAmount) {
+                highestCatAmount = amt;
+                highestCat = cat;
+            }
+        }
+
+        const budget = data.budgets[monthKey] || 35000.00;
+        const monthNames = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+        return {
+            monthName: `${monthNames[month] || monthKey} ${year}`,
+            income: income,
+            expenses: expenses,
+            savings: income - expenses,
+            transactionCount: monthTxs.length,
+            highestExpense: highestExp,
+            highestSpendingCategory: highestCat,
+            highestSpendingCategoryAmount: highestCatAmount,
+            budgetAmount: budget,
+            remainingBudget: budget - expenses,
+            budgetPercentageUsed: budget > 0 ? (expenses / budget) * 100 : 0
+        };
+    },
+
+    getCategoryReport(year, month) {
+        const data = this.loadData();
+        const monthKey = `${year}-${String(month).padStart(2, '0')}`;
+        const monthExpenses = data.transactions.filter(t => t.transactionDate.startsWith(monthKey) && t.transactionType === 'EXPENSE');
+
+        const catMap = {};
+        let total = 0;
+        monthExpenses.forEach(t => {
+            catMap[t.categoryName] = (catMap[t.categoryName] || 0) + t.amount;
+            total += t.amount;
+        });
+
+        const list = Object.entries(catMap).map(([name, spent]) => {
+            const cat = this.DEFAULT_CATEGORIES.find(c => c.categoryName === name) || {};
+            return {
+                categoryId: cat.categoryId || 0,
+                categoryName: name,
+                categoryType: 'EXPENSE',
+                totalAmount: spent,
+                transactionCount: 1,
+                percentage: total > 0 ? parseFloat(((spent / total) * 100).toFixed(1)) : 0,
+                icon: cat.icon || '🏷️'
+            };
+        });
+        list.sort((a, b) => b.totalAmount - a.totalAmount);
+        return list;
+    },
+
+    getTopExpenses(limit = 5) {
+        const data = this.loadData();
+        const expenses = data.transactions.filter(t => t.transactionType === 'EXPENSE');
+        expenses.sort((a, b) => b.amount - a.amount);
+        return expenses.slice(0, limit);
+    },
+
+    setBudget(month, year, amount) {
+        const data = this.loadData();
+        const monthKey = `${year}-${String(month).padStart(2, '0')}`;
+        data.budgets[monthKey] = parseFloat(amount);
+        this.saveData(data);
+    },
+
+    exportCsv() {
+        const data = this.loadData();
+        const headers = ['Transaction ID', 'Type', 'Category', 'Amount', 'Date', 'Payment Method', 'Description', 'Notes'];
+        const rows = data.transactions.map(t => [
+            t.transactionId,
+            t.transactionType,
+            `"${(t.categoryName || '').replace(/"/g, '""')}"`,
+            t.amount.toFixed(2),
+            t.transactionDate,
+            `"${(t.paymentMethod || '').replace(/"/g, '""')}"`,
+            `"${(t.description || '').replace(/"/g, '""')}"`,
+            `"${(t.notes || '').replace(/"/g, '""')}"`
+        ]);
+
+        const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', `transactions_export_${new Date().toISOString().split('T')[0]}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
 };
 
 // =============================================================================
@@ -74,36 +480,57 @@ function initializeDateDefaults() {
  * Checks server health and database connection status.
  */
 async function checkSystemStatus() {
+    const storageLabel = document.getElementById('storageLabel');
+    const storageBadge = document.getElementById('storageBadge');
+    const dot = storageBadge ? storageBadge.querySelector('.status-dot') : null;
+
     try {
-        const res = await fetch('/api/status');
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2000);
+        const res = await fetch('/api/status', { signal: controller.signal });
+        clearTimeout(timeoutId);
+
         if (res.ok) {
             const data = await res.json();
             const info = data.data;
-            const storageLabel = document.getElementById('storageLabel');
-            const storageBadge = document.getElementById('storageBadge');
-            const dot = storageBadge ? storageBadge.querySelector('.status-dot') : null;
+            state.isDemoMode = false;
 
             if (storageLabel) storageLabel.textContent = info.storage || 'Connected';
             if (dot) {
-                if (info.databaseAvailable || info.storage.includes('Memory')) {
+                if (info.databaseAvailable || (info.storage && info.storage.includes('Memory'))) {
                     dot.className = 'status-dot';
                 } else {
                     dot.className = 'status-dot status-dot-offline';
                 }
             }
             hideBackendError();
-        } else {
-            showBackendError();
+            return;
         }
     } catch (err) {
-        showBackendError();
+        // Backend offline, timed out, or 404 (e.g. running on Vercel)
     }
+
+    // Backend is unreachable: activate in-browser DemoEngine
+    state.isDemoMode = true;
+    if (storageLabel) storageLabel.textContent = 'Live Demo (Vercel)';
+    if (dot) {
+        dot.className = 'status-dot status-dot-demo';
+    }
+    hideBackendError();
 }
 
 /**
- * Loads categories from /api/categories.
+ * Loads categories from /api/categories or DemoEngine.
  */
 async function loadCategories() {
+    if (state.isDemoMode) {
+        state.categories = DemoEngine.getCategories();
+        populateFilterCategories();
+        updateModalCategories('EXPENSE');
+        hideBackendError();
+        return;
+    }
+
     try {
         const res = await fetch('/api/categories');
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -114,14 +541,27 @@ async function loadCategories() {
         hideBackendError();
     } catch (err) {
         console.error('Failed to load categories:', err);
-        showBackendError();
+        state.isDemoMode = true;
+        state.categories = DemoEngine.getCategories();
+        populateFilterCategories();
+        updateModalCategories('EXPENSE');
+        hideBackendError();
     }
 }
 
 /**
- * Loads primary dashboard metrics from /api/dashboard.
+ * Loads primary dashboard metrics from /api/dashboard or DemoEngine.
  */
 async function loadDashboard() {
+    if (state.isDemoMode) {
+        const data = DemoEngine.getDashboard();
+        state.dashboard = data;
+        renderDashboardKPIs(data);
+        renderRecentTransactions(data.recentTransactions || []);
+        hideBackendError();
+        return;
+    }
+
     try {
         const res = await fetch('/api/dashboard');
         if (!res.ok) {
@@ -135,7 +575,12 @@ async function loadDashboard() {
         hideBackendError();
     } catch (err) {
         console.error('Failed to load dashboard:', err);
-        showBackendError();
+        state.isDemoMode = true;
+        const data = DemoEngine.getDashboard();
+        state.dashboard = data;
+        renderDashboardKPIs(data);
+        renderRecentTransactions(data.recentTransactions || []);
+        hideBackendError();
     }
 }
 
@@ -143,15 +588,28 @@ async function loadDashboard() {
  * Loads monthly financial summary for the currently selected month/year.
  */
 async function loadMonthlyReport() {
+    const [yearStr, monthStr] = state.selectedMonth.split('-');
+    const year = parseInt(yearStr, 10);
+    const month = parseInt(monthStr, 10);
+
+    if (state.isDemoMode) {
+        const data = DemoEngine.getMonthlyReport(year, month);
+        state.monthly = data;
+        renderMonthlySummary(data);
+        return;
+    }
+
     try {
-        const [yearStr, monthStr] = state.selectedMonth.split('-');
-        const res = await fetch(`/api/reports/monthly?month=${parseInt(monthStr)}&year=${parseInt(yearStr)}`);
+        const res = await fetch(`/api/reports/monthly?month=${month}&year=${year}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         state.monthly = data;
         renderMonthlySummary(data);
     } catch (err) {
         console.error('Failed to load monthly report:', err);
+        const data = DemoEngine.getMonthlyReport(year, month);
+        state.monthly = data;
+        renderMonthlySummary(data);
     }
 }
 
@@ -159,14 +617,25 @@ async function loadMonthlyReport() {
  * Loads expense category breakdown report for canvas chart.
  */
 async function loadCategoryReport() {
+    const [yearStr, monthStr] = state.selectedMonth.split('-');
+    const year = parseInt(yearStr, 10);
+    const month = parseInt(monthStr, 10);
+
+    if (state.isDemoMode) {
+        const categories = DemoEngine.getCategoryReport(year, month);
+        renderDonutChart(categories);
+        return;
+    }
+
     try {
-        const [yearStr, monthStr] = state.selectedMonth.split('-');
-        const res = await fetch(`/api/reports/categories?month=${parseInt(monthStr)}&year=${parseInt(yearStr)}`);
+        const res = await fetch(`/api/reports/categories?month=${month}&year=${year}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         renderDonutChart(data.categories || []);
     } catch (err) {
         console.error('Failed to load category report:', err);
+        const categories = DemoEngine.getCategoryReport(year, month);
+        renderDonutChart(categories);
     }
 }
 
@@ -174,6 +643,12 @@ async function loadCategoryReport() {
  * Loads Top 5 highest single expenses.
  */
 async function loadTopExpenses() {
+    if (state.isDemoMode) {
+        const top = DemoEngine.getTopExpenses(5);
+        renderTopExpenses(top);
+        return;
+    }
+
     try {
         const res = await fetch('/api/reports/top-expenses?limit=5');
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -181,6 +656,7 @@ async function loadTopExpenses() {
         renderTopExpenses(data.topExpenses || []);
     } catch (err) {
         console.error('Failed to load top expenses:', err);
+        renderTopExpenses(DemoEngine.getTopExpenses(5));
     }
 }
 
@@ -221,6 +697,20 @@ async function loadTransactions() {
         endDate = document.getElementById('filterEndDate').value;
     }
 
+    if (state.isDemoMode) {
+        state.transactions = DemoEngine.getTransactions({
+            search,
+            type,
+            category,
+            startDate,
+            endDate,
+            sort
+        });
+        renderTransactionsTable(state.transactions);
+        hideBackendError();
+        return;
+    }
+
     const params = new URLSearchParams();
     if (type && type !== 'ALL') params.append('type', type);
     if (category && category !== 'ALL') params.append('category', category);
@@ -238,7 +728,16 @@ async function loadTransactions() {
         hideBackendError();
     } catch (err) {
         console.error('Failed to load transactions:', err);
-        showToast('Error loading transactions: ' + err.message, 'error');
+        state.transactions = DemoEngine.getTransactions({
+            search,
+            type,
+            category,
+            startDate,
+            endDate,
+            sort
+        });
+        renderTransactionsTable(state.transactions);
+        hideBackendError();
     }
 }
 
@@ -716,6 +1215,24 @@ async function handleTransactionSubmit(e) {
     const errBanner = document.getElementById('formErrorBanner');
     errBanner.classList.add('hidden');
 
+    if (state.isDemoMode) {
+        try {
+            if (isEdit) {
+                DemoEngine.updateTransaction(id, payload);
+            } else {
+                DemoEngine.addTransaction(payload);
+            }
+            closeTransactionModal();
+            showToast(isEdit ? 'Transaction updated successfully.' : 'Transaction added successfully.', 'success');
+            await refreshAllData();
+            return;
+        } catch (err) {
+            errBanner.textContent = err.message;
+            errBanner.classList.remove('hidden');
+            return;
+        }
+    }
+
     try {
         const url = isEdit ? `/api/transactions/${id}` : '/api/transactions';
         const method = isEdit ? 'PUT' : 'POST';
@@ -756,6 +1273,21 @@ async function handleBudgetSubmit(e) {
     const errBanner = document.getElementById('budgetErrorBanner');
     errBanner.classList.add('hidden');
 
+    if (state.isDemoMode) {
+        try {
+            DemoEngine.setBudget(month, year, amount);
+            closeBudgetModal();
+            showToast('Monthly budget updated successfully.', 'success');
+            await loadDashboard();
+            await loadMonthlyReport();
+            return;
+        } catch (err) {
+            errBanner.textContent = err.message;
+            errBanner.classList.remove('hidden');
+            return;
+        }
+    }
+
     try {
         const res = await fetch('/api/budget', {
             method: 'POST',
@@ -782,6 +1314,14 @@ async function handleBudgetSubmit(e) {
 async function confirmDeleteTransaction() {
     if (!state.deleteTarget) return;
     const id = state.deleteTarget.transactionId;
+
+    if (state.isDemoMode) {
+        DemoEngine.deleteTransaction(id);
+        closeDeleteModal();
+        showToast('Transaction deleted.', 'success');
+        await refreshAllData();
+        return;
+    }
 
     try {
         const res = await fetch(`/api/transactions/${id}`, { method: 'DELETE' });
@@ -828,7 +1368,11 @@ function bindEventListeners() {
 
     // CSV export
     document.getElementById('btnExportCsv').addEventListener('click', () => {
-        window.location.href = '/api/export';
+        if (state.isDemoMode) {
+            DemoEngine.exportCsv();
+        } else {
+            window.location.href = '/api/export';
+        }
     });
 
     // Retry connection button
@@ -950,6 +1494,21 @@ function formatCurrency(amount) {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2
     });
+}
+
+function formatDateDisplay(dateStr) {
+    if (!dateStr) return '';
+    try {
+        const parts = dateStr.split('-');
+        if (parts.length === 3) {
+            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            const m = parseInt(parts[1], 10) - 1;
+            return `${months[m] || parts[1]} ${parts[2]}, ${parts[0]}`;
+        }
+        return dateStr;
+    } catch (e) {
+        return dateStr;
+    }
 }
 
 function escapeHtml(text) {

@@ -33,3 +33,4 @@ Thumbs.db
 
 # Sensitive local credentials (optional overrides)
 # db.local.properties
+.vercel

@@ -1,11 +1,18 @@
 # 💰 Personal Income and Expense Tracker (Core Java + Web UI + JDBC)
 
+[![Vercel Deployment](https://img.shields.io/badge/Vercel-Live_Demo-000000?style=for-the-badge&logo=vercel&logoColor=white)](https://income-expense-tracker-red.vercel.app)
+[![Java 21+](https://img.shields.io/badge/Java-21%2B-ED8B00?style=for-the-badge&logo=openjdk&logoColor=white)](https://openjdk.org/)
+[![MySQL 8.x](https://img.shields.io/badge/MySQL-8.x-4479A1?style=for-the-badge&logo=mysql&logoColor=white)](https://www.mysql.com/)
+
 A full-stack, production-grade **Personal Income and Expense Tracker** built from the ground up to demonstrate deep mastery of **Core Java**, **Object-Oriented Programming (OOP)**, the **Java Collections Framework**, **Exception Handling**, **JDBC & MySQL**, **Data Structures & Algorithms (DSA)**, **RESTful Web APIs**, and the **JavaScript Fetch API** — completely **free of heavy frameworks** such as Spring Boot, Hibernate/JPA, Node.js, Express, React, Bootstrap, or Tailwind CSS.
+
+> 🚀 **Live Demo on Vercel**: [https://income-expense-tracker-red.vercel.app](https://income-expense-tracker-red.vercel.app)
 
 ---
 
 ## 📋 Table of Contents
 - [Project Overview](#-project-overview)
+- [Live Vercel Deployment & Cloud Hosting](#-live-vercel-deployment--cloud-hosting)
 - [How I Explain This Project in an Interview (60–90s Pitch)](#-how-i-explain-this-project-in-an-interview-6090s-pitch)
 - [Key Features](#-key-features)
 - [Technology Stack & Architectural Constraints](#-technology-stack--architectural-constraints)
@@ -47,6 +54,31 @@ This project is engineered specifically for a fresher or junior Java developer s
 - **Native Frontend**: Pure **Vanilla HTML5, CSS3, and JavaScript** with `fetch()`, DOM updates, and an HTML5 Canvas donut chart (zero Bootstrap, zero Tailwind, zero React, zero Chart.js).
 - **Algorithmic Rigor**: Hand-crafted **MergeSort**, **QuickSort**, **Binary Search**, and multi-field linear filtering for in-depth data analysis.
 - **Indian Rupee (`₹`) Localization**: All currency displays, calculations, formatted outputs, and sample records consistently use the Indian Rupee symbol (`₹`) formatted with standard Indian grouping.
+
+---
+
+## 🌐 Live Vercel Deployment & Cloud Hosting
+
+### 🚀 Production Live URL
+- **Live Vercel Site**: **[https://income-expense-tracker-red.vercel.app](https://income-expense-tracker-red.vercel.app)**
+
+### Deployment Architecture & Resilient Dual-Mode Operation
+1. **Frontend Hosting (Vercel)**:
+   - Configured via [vercel.json](vercel.json) to serve the `web/` single-page application directly across Vercel's global edge network.
+   - Zero compilation/bundle steps required: pure semantic HTML5, modern CSS3 variables, and vanilla JavaScript.
+2. **Interactive In-Browser Demo Mode**:
+   - Includes a built-in `DemoEngine` in [web/app.js](web/app.js) backed by browser `localStorage`.
+   - When visited on Vercel without an active backend, all features work interactively:
+     - 4 KPI Dashboard Cards (`Current Balance`, `Total Income`, `Total Expenses`, `Monthly Budget`)
+     - Adding, editing, and deleting transactions
+     - Cascading category filtering by transaction type
+     - Real-time HTML5 Canvas donut chart rendering
+     - In-browser MergeSort, QuickSort, and multi-field search
+     - Monthly summary & net savings calculation
+     - CSV data export
+3. **Connecting a Hosted Core Java Backend (Optional)**:
+   - The repository includes a production-ready, multi-stage [Dockerfile](Dockerfile) and [render.yaml](render.yaml) for 1-click deployment to free Java container platforms like **Render**, **Railway**, or **Fly.io**.
+   - To connect the Vercel frontend to your hosted Java backend, set `EXPENSE_TRACKER_API_BASE` in browser `localStorage` or configure the backend rewrite in `vercel.json`.
 
 ---
 
